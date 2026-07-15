@@ -139,6 +139,7 @@
   .badge-genehmigt{background:var(--ok-bg); color:var(--ok);}
   .badge-abgelehnt{background:var(--bad-bg); color:var(--bad);}
   .badge-rolle{background:var(--gold-bg); color:var(--gold);}
+  .badge-sou{background:#e0e7ff; color:#3730a3;}
 
   table{width:100%; border-collapse:collapse; font-size:14px;}
   th{
@@ -240,6 +241,8 @@
   .kal-grid tbody td.today{box-shadow:inset 0 0 0 2px var(--red);}
   .kal-grid tbody td.genehmigt{background:#2d8b4f; color:#fff; font-weight:700; border-color:#256f3f;}
   .kal-grid tbody td.offen{background:#fdf3d9; color:var(--warn); font-weight:700; border:1.5px dashed var(--warn);}
+  .kal-grid tbody td.sou{background:#4338ca; color:#fff; font-weight:700; border-color:#312991;}
+  .kal-grid tbody td.sou-offen{background:#e0e7ff; color:#3730a3; font-weight:700; border:1.5px dashed #4338ca;}
   .kal-grid tbody td.betriebsurlaub{background:#2b6cb0; color:#fff; font-weight:700; border-color:#1e4e82;}
   .legend{display:flex; gap:16px; margin-top:14px; font-size:12.5px; flex-wrap:wrap; padding:10px 12px; background:var(--gray-100); border-radius:6px;}
   .legend span{display:inline-flex; align-items:center; gap:6px; color:var(--gray-700); font-weight:500;}
@@ -337,6 +340,11 @@
       <option value="genehmigt">Genehmigt</option>
       <option value="abgelehnt">Abgelehnt</option>
     </select>
+    <label>Art</label>
+    <select id="editArt">
+      <option value="urlaub">Urlaub</option>
+      <option value="sonderurlaub">Sonderurlaub (SOU)</option>
+    </select>
     <label>Bemerkung</label>
     <textarea id="editBemerkung"></textarea>
     <div class="tage-preview">
@@ -390,6 +398,11 @@
           <select id="antragMitarbeiterSelect" onchange="updateTagePreview()"></select>
           <div class="note">Als Admin kannst du hier den Antrag für einen anderen Mitarbeiter stellen.</div>
         </div>
+        <label>Art des Antrags</label>
+        <select id="antragArt" onchange="updateTagePreview()">
+          <option value="urlaub">Urlaub</option>
+          <option value="sonderurlaub">Sonderurlaub (SOU)</option>
+        </select>
         <div class="row">
           <div>
             <label>Startdatum</label>
@@ -414,7 +427,7 @@
         <textarea id="antragBemerkung" placeholder="z. B. Grund, Vertretung, Sonderfall…"></textarea>
 
         <div class="tage-preview">
-          <span>Beantragte Urlaubstage (Wochenenden &amp; NRW-Feiertage automatisch ausgeschlossen):</span>
+          <span id="tagePreviewLabel">Beantragte Urlaubstage (Wochenenden &amp; NRW-Feiertage automatisch ausgeschlossen):</span>
           <span class="val mono" id="tagePreviewVal">0</span>
         </div>
 
@@ -431,7 +444,7 @@
         <div class="table-scroll">
         <table>
           <thead>
-            <tr><th>Zeitraum</th><th class="mono">Tage</th><th>Status</th><th>Bemerkung</th><th>Gestellt am</th><th></th></tr>
+            <tr><th>Zeitraum</th><th class="mono">Tage</th><th>Art</th><th>Status</th><th>Bemerkung</th><th>Gestellt am</th><th></th></tr>
           </thead>
           <tbody id="meineAntraegeBody"></tbody>
         </table>
@@ -454,6 +467,11 @@
             <option value="genehmigt">Genehmigt</option>
             <option value="abgelehnt">Abgelehnt</option>
           </select>
+          <select id="adminFilterArt" onchange="renderAdminList()">
+            <option value="alle">Alle Arten</option>
+            <option value="urlaub">Urlaub</option>
+            <option value="sonderurlaub">Sonderurlaub</option>
+          </select>
           <select id="adminFilterMitarbeiter" onchange="renderAdminList()">
             <option value="alle">Alle Mitarbeiter</option>
           </select>
@@ -461,7 +479,7 @@
         <div class="table-scroll">
         <table>
           <thead>
-            <tr><th>Mitarbeiter</th><th>Zeitraum</th><th class="mono">Tage</th><th>Status</th><th>Bemerkung</th><th>Aktion</th></tr>
+            <tr><th>Mitarbeiter</th><th>Zeitraum</th><th class="mono">Tage</th><th>Art</th><th>Status</th><th>Bemerkung</th><th>Aktion</th></tr>
           </thead>
           <tbody id="adminAntraegeBody"></tbody>
         </table>
@@ -539,8 +557,10 @@
           <table class="kal-grid" id="kalenderTable"></table>
         </div>
         <div class="legend">
-          <span><span class="box" style="background:#2d8b4f;"></span> Genehmigt</span>
-          <span><span class="box" style="background:#fdf3d9; border-color:var(--warn);"></span> Offen (beantragt)</span>
+          <span><span class="box" style="background:#2d8b4f;"></span> Urlaub genehmigt</span>
+          <span><span class="box" style="background:#fdf3d9; border-color:var(--warn);"></span> Urlaub offen</span>
+          <span><span class="box" style="background:#4338ca;"></span> Sonderurlaub genehmigt</span>
+          <span><span class="box" style="background:#e0e7ff; border-color:#4338ca;"></span> Sonderurlaub offen</span>
           <span><span class="box" style="background:#2b6cb0;"></span> Betriebsurlaub</span>
           <span><span class="box" style="background:#ececec;"></span> Feiertag</span>
           <span><span class="box" style="background:#f7f7f7;"></span> Wochenende</span>
@@ -1110,10 +1130,14 @@ function updateTagePreview(){
   const ende = document.getElementById('antragEnde').value;
   const halbStart = document.getElementById('halbTagStart').checked;
   const halbEnde = document.getElementById('halbTagEnde').checked;
+  const art = document.getElementById('antragArt').value;
   const ziel = ermittleZielMitarbeiter();
   const arbeitstage = getArbeitstage(ziel ? ziel.name : null);
   const tage = berechneUrlaubstage(start, ende, halbStart, halbEnde, arbeitstage);
   document.getElementById('tagePreviewVal').textContent = tage.toString().replace('.', ',');
+  document.getElementById('tagePreviewLabel').textContent = art==='sonderurlaub'
+    ? 'Beantragte Sonderurlaubstage (zählt nicht auf den Resturlaub):'
+    : 'Beantragte Urlaubstage (Wochenenden & NRW-Feiertage automatisch ausgeschlossen):';
 }
 
 async function submitAntrag(){
@@ -1122,6 +1146,7 @@ async function submitAntrag(){
   const ende = document.getElementById('antragEnde').value;
   const halbStart = document.getElementById('halbTagStart').checked;
   const halbEnde = document.getElementById('halbTagEnde').checked;
+  const art = document.getElementById('antragArt').value;
   const bemerkung = document.getElementById('antragBemerkung').value.trim();
 
   if(!start || !ende){
@@ -1158,6 +1183,7 @@ async function submitAntrag(){
     halbTagStart: halbStart,
     halbTagEnde: halbEnde,
     tage,
+    art: art || 'urlaub',
     bemerkung: bemerkung || null,
     status: 'offen',
     erstelltAm: firebase.database.ServerValue.TIMESTAMP,
@@ -1170,12 +1196,13 @@ async function submitAntrag(){
   try{
     await db.ref('antraege').push(antrag);
     const ok = document.getElementById('antragSuccess');
-    ok.textContent = 'Antrag erfolgreich gestellt (' + tage.toString().replace('.',',') + ' Tag(e)). Status: offen.';
+    ok.textContent = (art==='sonderurlaub' ? 'Sonderurlaubsantrag' : 'Antrag') + ' erfolgreich gestellt (' + tage.toString().replace('.',',') + ' Tag(e)). Status: offen.';
     ok.classList.remove('hidden');
     document.getElementById('antragStart').value = '';
     document.getElementById('antragEnde').value = '';
     document.getElementById('halbTagStart').checked = false;
     document.getElementById('halbTagEnde').checked = false;
+    document.getElementById('antragArt').value = 'urlaub';
     document.getElementById('antragBemerkung').value = '';
     updateTagePreview();
   }catch(err){
@@ -1217,6 +1244,7 @@ function renderMeineAntraege(){
     tr.innerHTML =
       '<td>'+zeitraum+'</td>'+
       '<td class="mono">'+String(a.tage).replace('.',',')+'</td>'+
+      '<td>'+labelArt(a.art)+'</td>'+
       '<td><span class="badge badge-'+a.status+'">'+labelStatus(a.status)+'</span></td>'+
       '<td>'+(a.bemerkung || '<span class="note" style="margin:0;">–</span>')+'</td>'+
       '<td class="mono">'+gestellt+'</td>'+
@@ -1234,6 +1262,9 @@ async function zurueckziehen(id){
 }
 function labelStatus(s){
   return {offen:'Offen', genehmigt:'Genehmigt', abgelehnt:'Abgelehnt'}[s] || s;
+}
+function labelArt(a){
+  return a==='sonderurlaub' ? '<span class="badge badge-sou">SOU</span>' : '<span class="note" style="margin:0;">Urlaub</span>';
 }
 function formatDatum(str){
   if(!str) return '–';
@@ -1273,11 +1304,13 @@ function befuelleMitarbeiterFilter(){
 function renderAdminList(){
   const statusFilter = document.getElementById('adminFilterStatus').value;
   const mitarbeiterFilter = document.getElementById('adminFilterMitarbeiter').value;
+  const artFilter = document.getElementById('adminFilterArt').value;
   const body = document.getElementById('adminAntraegeBody');
   body.innerHTML = '';
   const gefiltert = alleAntraegeCache.filter(a=>
     (statusFilter==='alle' || a.status===statusFilter) &&
-    (mitarbeiterFilter==='alle' || a.name===mitarbeiterFilter)
+    (mitarbeiterFilter==='alle' || a.name===mitarbeiterFilter) &&
+    (artFilter==='alle' || (a.art||'urlaub')===artFilter)
   );
   if(gefiltert.length===0){
     show('adminAntraegeEmpty');
@@ -1298,6 +1331,7 @@ function renderAdminList(){
       '<td>'+a.name+'<br><span class="note" style="margin:0;">'+a.standort+'</span></td>'+
       '<td>'+zeitraum+'</td>'+
       '<td class="mono">'+String(a.tage).replace('.',',')+'</td>'+
+      '<td>'+labelArt(a.art)+'</td>'+
       '<td><span class="badge badge-'+a.status+'">'+labelStatus(a.status)+'</span></td>'+
       '<td>'+(a.bemerkung || '–')+'</td>'+
       '<td style="white-space:nowrap;">'+aktion+'</td>';
@@ -1333,6 +1367,7 @@ function openEditModal(id){
   document.getElementById('editHalbTagStart').checked = !!a.halbTagStart;
   document.getElementById('editHalbTagEnde').checked = !!a.halbTagEnde;
   document.getElementById('editStatus').value = a.status || 'offen';
+  document.getElementById('editArt').value = a.art || 'urlaub';
   document.getElementById('editBemerkung').value = a.bemerkung || '';
   hide('editError');
   updateEditTagePreview();
@@ -1359,6 +1394,7 @@ async function submitEdit(){
   const halbStart = document.getElementById('editHalbTagStart').checked;
   const halbEnde = document.getElementById('editHalbTagEnde').checked;
   const status = document.getElementById('editStatus').value;
+  const art = document.getElementById('editArt').value;
   const bemerkung = document.getElementById('editBemerkung').value.trim();
   if(!start || !ende){ zeigeFehler('editError','Bitte Start- und Enddatum angeben.'); return; }
   if(new Date(ende) < new Date(start)){ zeigeFehler('editError','Enddatum liegt vor dem Startdatum.'); return; }
@@ -1369,6 +1405,7 @@ async function submitEdit(){
       start, ende,
       halbTagStart: halbStart, halbTagEnde: halbEnde,
       tage,
+      art,
       bemerkung: bemerkung || null,
       status,
       bearbeitetAm: firebase.database.ServerValue.TIMESTAMP,
@@ -1397,6 +1434,7 @@ function exportGenehmigenExcel(){
     Start: formatDatum(a.start),
     Ende: formatDatum(a.ende),
     Tage: a.tage,
+    Art: a.art==='sonderurlaub' ? 'Sonderurlaub' : 'Urlaub',
     Status: labelStatus(a.status),
     Bemerkung: a.bemerkung || '',
     'Gestellt am': a.erstelltAm ? new Date(a.erstelltAm).toLocaleDateString('de-DE') : '',
@@ -1436,7 +1474,7 @@ function tageDetailProAntrag(a){
 function berechneMonatsverteilung(name, jahr){
   const monate = new Array(12).fill(0);
   alleAntraegeCache
-    .filter(a=>a.name===name && a.status==='genehmigt')
+    .filter(a=>a.name===name && a.status==='genehmigt' && (a.art||'urlaub')!=='sonderurlaub')
     .forEach(a=>{
       tageDetailProAntrag(a).forEach(t=>{
         if(t.datum.getFullYear() === Number(jahr)){
@@ -1521,7 +1559,7 @@ function renderResturlaub(){
   MITARBEITER.forEach(m=>{
     const sd = getStammdatum(jahr, m.name);
     const genommen = alleAntraegeCache
-      .filter(a=>a.name===m.name && a.status==='genehmigt' && a.start && a.start.startsWith(jahr))
+      .filter(a=>a.name===m.name && a.status==='genehmigt' && (a.art||'urlaub')!=='sonderurlaub' && a.start && a.start.startsWith(jahr))
       .reduce((sum,a)=>sum+Number(a.tage||0),0);
     const resturlaub = Number(sd.restVorjahr) + Number(sd.anspruch) - genommen;
     const tr = document.createElement('tr');
@@ -1540,7 +1578,7 @@ function exportResturlaubExcel(){
   const rows = MITARBEITER.map(m=>{
     const sd = getStammdatum(jahr, m.name);
     const genommen = alleAntraegeCache
-      .filter(a=>a.name===m.name && a.status==='genehmigt' && a.start && a.start.startsWith(jahr))
+      .filter(a=>a.name===m.name && a.status==='genehmigt' && (a.art||'urlaub')!=='sonderurlaub' && a.start && a.start.startsWith(jahr))
       .reduce((sum,a)=>sum+Number(a.tage||0),0);
     const resturlaub = Number(sd.restVorjahr) + Number(sd.anspruch) - genommen;
     return {
@@ -1628,7 +1666,8 @@ function renderKalender(){
       const treffer = alleAntraegeCache.find(a=> a.name===m.name && a.status!=='abgelehnt' && key>=a.start && key<=a.ende);
       let inhalt = '';
       if(treffer){
-        cls = treffer.status==='genehmigt' ? 'genehmigt' : 'offen';
+        const istSou = treffer.art==='sonderurlaub';
+        cls = treffer.status==='genehmigt' ? (istSou?'sou':'genehmigt') : (istSou?'sou-offen':'offen');
         const istStart = key===treffer.start, istEnde = key===treffer.ende;
         if((istStart && treffer.halbTagStart) || (istEnde && treffer.halbTagEnde && !(istStart && treffer.halbTagStart))) inhalt = '½';
         else inhalt = '●';
@@ -1637,7 +1676,7 @@ function renderKalender(){
       }
       if(isToday) cls += ' today';
 
-      tbody += '<td class="'+cls+'" title="'+m.name+' – '+formatDatum(key)+(treffer?' · '+labelStatus(treffer.status):(cls.includes('betriebsurlaub')?' · Betriebsurlaub':''))+'">'+inhalt+'</td>';
+      tbody += '<td class="'+cls+'" title="'+m.name+' – '+formatDatum(key)+(treffer?' · '+(treffer.art==='sonderurlaub'?'Sonderurlaub · ':'')+labelStatus(treffer.status):(cls.includes('betriebsurlaub')?' · Betriebsurlaub':''))+'">'+inhalt+'</td>';
     }
     tbody += '</tr>';
   });
