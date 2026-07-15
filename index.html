@@ -97,6 +97,10 @@
   .btn-link{background:none; color:var(--red); font-weight:700; padding:4px 0; font-size:13px;}
 
   .container{max-width:1100px; margin:0 auto; padding:24px 20px 80px;}
+  .kalender-breakout{
+    width:96vw; max-width:1500px;
+    margin-left:50%; transform:translateX(-50%);
+  }
   .card{
     background:var(--white); border-radius:8px; box-shadow:var(--shadow);
     padding:24px; margin-bottom:22px; border-top:4px solid var(--red);
@@ -197,20 +201,49 @@
   .note{font-size:12.5px; color:var(--gray-400); margin-top:6px;}
   .footer-note{text-align:center; color:var(--gray-400); font-size:12px; margin-top:30px;}
 
-  .kal-grid{border-collapse:collapse; font-size:11.5px; width:100%;}
-  .kal-grid th{position:sticky; top:0; background:var(--white); z-index:2;}
-  .kal-grid th.name-col, .kal-grid td.name-col{
-    position:sticky; left:0; background:var(--white); z-index:1; text-align:left; font-weight:700;
-    min-width:150px; border-right:2px solid var(--gray-200); font-size:13px;
+  .kal-wrap{
+    background:var(--white); padding:8px; border-radius:8px; border:1px solid var(--gray-200);
+    width:100%;
   }
-  .kal-grid td{text-align:center; width:26px; padding:5px 2px; border:1px solid var(--gray-200); font-family:Consolas,Menlo,Monaco,'Courier New',monospace;}
-  .kal-grid td.we{background:#f0f0f0;}
-  .kal-grid td.feiertag{background:#e6e6e6;}
-  .kal-grid td.genehmigt{background:var(--ok); color:var(--white); font-weight:700;}
-  .kal-grid td.offen{background:var(--warn-bg); color:var(--warn); font-weight:700; border:1px dashed var(--warn);}
-  .legend{display:flex; gap:16px; margin-top:14px; font-size:12.5px; flex-wrap:wrap;}
-  .legend span{display:inline-flex; align-items:center; gap:6px;}
-  .legend .box{width:14px; height:14px; border-radius:3px; display:inline-block;}
+  .kal-grid{border-collapse:separate; border-spacing:2px; font-size:12px; width:100%; table-layout:fixed;}
+  .kal-grid thead th{
+    background:transparent; text-align:center; padding:4px 1px; border:none; overflow:hidden;
+  }
+  .kal-grid thead th.day-num{
+    font-family:Consolas,Menlo,Monaco,monospace; font-size:clamp(9px,1.1vw,12.5px); color:var(--black);
+    font-weight:600; background:var(--white);
+  }
+  .kal-grid thead th.day-name{
+    font-size:clamp(7px,0.8vw,9.5px); color:var(--gray-400); font-weight:600;
+    letter-spacing:0.3px; text-transform:uppercase; background:var(--white);
+    padding-top:0; padding-bottom:6px;
+  }
+  .kal-grid thead th.day-num.we-h{color:var(--gray-400);}
+  .kal-grid thead th.day-num.today-h{
+    color:var(--white); background:var(--red); border-radius:4px; padding:4px 2px;
+  }
+  .kal-grid th.name-col, .kal-grid td.name-col{
+    position:sticky; left:0; background:var(--white); z-index:3; text-align:left; font-weight:600;
+    width:140px; padding:8px 8px 8px 4px; font-size:clamp(11px,1.1vw,13.5px); border-right:2px solid var(--gray-200);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .kal-grid th.name-col{color:var(--gray-700); font-size:11px; text-transform:uppercase; letter-spacing:0.5px;}
+  .kal-grid tbody td{
+    text-align:center; padding:0; border:1px solid var(--gray-200);
+    border-radius:5px; height:28px;
+    font-family:Consolas,Menlo,Monaco,monospace; font-size:clamp(9px,1vw,13px); color:var(--gray-400);
+    transition:transform .1s; overflow:hidden;
+  }
+  .kal-grid tbody td:hover{transform:scale(1.25); z-index:1; position:relative; box-shadow:0 2px 8px rgba(0,0,0,0.15);}
+  .kal-grid tbody td.we{background:#f7f7f7; border-color:#eee;}
+  .kal-grid tbody td.feiertag{background:#ececec; border-color:#ddd; color:var(--gray-700);}
+  .kal-grid tbody td.today{box-shadow:inset 0 0 0 2px var(--red);}
+  .kal-grid tbody td.genehmigt{background:#2d8b4f; color:#fff; font-weight:700; border-color:#256f3f;}
+  .kal-grid tbody td.offen{background:#fdf3d9; color:var(--warn); font-weight:700; border:1.5px dashed var(--warn);}
+  .kal-grid tbody td.betriebsurlaub{background:#2b6cb0; color:#fff; font-weight:700; border-color:#1e4e82;}
+  .legend{display:flex; gap:16px; margin-top:14px; font-size:12.5px; flex-wrap:wrap; padding:10px 12px; background:var(--gray-100); border-radius:6px;}
+  .legend span{display:inline-flex; align-items:center; gap:6px; color:var(--gray-700); font-weight:500;}
+  .legend .box{width:14px; height:14px; border-radius:3px; display:inline-block; border:1px solid transparent;}
 
   .settings-section{border-top:1px solid var(--gray-200); padding-top:18px; margin-top:18px;}
   .settings-section:first-of-type{border-top:none; padding-top:0; margin-top:0;}
@@ -259,6 +292,51 @@
   </div>
 </div>
 
+<!-- ===================== ADMIN: ANTRAG BEARBEITEN ===================== -->
+<div id="editOverlay" class="onboarding-overlay hidden">
+  <div class="onboarding-card" style="max-width:520px;">
+    <h2 style="margin-top:0;">Antrag bearbeiten</h2>
+    <div id="editSubtitle" class="note" style="margin-bottom:14px;"></div>
+    <div class="row">
+      <div>
+        <label>Startdatum</label>
+        <input type="date" id="editStart" onchange="updateEditTagePreview()">
+      </div>
+      <div>
+        <label>Enddatum</label>
+        <input type="date" id="editEnde" onchange="updateEditTagePreview()">
+      </div>
+    </div>
+    <div class="row">
+      <div class="checkbox-row">
+        <input type="checkbox" id="editHalbTagStart" onchange="updateEditTagePreview()">
+        <label style="margin:0; text-transform:none; font-weight:600;" for="editHalbTagStart">Starttag: halber Tag</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="editHalbTagEnde" onchange="updateEditTagePreview()">
+        <label style="margin:0; text-transform:none; font-weight:600;" for="editHalbTagEnde">Endtag: halber Tag</label>
+      </div>
+    </div>
+    <label>Status</label>
+    <select id="editStatus">
+      <option value="offen">Offen</option>
+      <option value="genehmigt">Genehmigt</option>
+      <option value="abgelehnt">Abgelehnt</option>
+    </select>
+    <label>Bemerkung</label>
+    <textarea id="editBemerkung"></textarea>
+    <div class="tage-preview">
+      <span>Berechnete Urlaubstage:</span>
+      <span class="val mono" id="editTagePreviewVal">0</span>
+    </div>
+    <div style="display:flex; gap:10px; margin-top:16px;">
+      <button class="btn-primary" style="flex:1;" onclick="submitEdit()">Änderungen speichern</button>
+      <button class="btn-secondary" onclick="closeEditModal()">Abbrechen</button>
+    </div>
+    <div id="editError" class="error-msg hidden"></div>
+  </div>
+</div>
+
 <!-- ===================== APP ===================== -->
 <div id="app" class="hidden">
   <header class="topbar">
@@ -293,6 +371,11 @@
     <div id="tab-antrag" class="tab-content">
       <div class="card">
         <h2><span class="title-txt">Neuen <span class="accent">Urlaubsantrag</span> stellen</span></h2>
+        <div id="antragMitarbeiterWrapper" class="hidden">
+          <label>Für Mitarbeiter</label>
+          <select id="antragMitarbeiterSelect"></select>
+          <div class="note">Als Admin kannst du hier den Antrag für einen anderen Mitarbeiter stellen.</div>
+        </div>
         <div class="row">
           <div>
             <label>Startdatum</label>
@@ -427,7 +510,7 @@
 
     <!-- TAB: Kalender -->
     <div id="tab-kalender" class="tab-content hidden">
-      <div class="card">
+      <div class="card kalender-breakout">
         <h2>
           <span class="title-txt">Team-<span class="accent">Kalender</span></span>
           <button class="btn-secondary btn-small export-btn hidden" onclick="exportKalenderExcel()">📥 Excel-Export</button>
@@ -438,14 +521,16 @@
           <label style="margin:0; text-transform:none; font-weight:600;">Jahr:</label>
           <select id="kalenderJahr" onchange="renderKalender()"></select>
         </div>
-        <div class="table-scroll">
+        <div class="kal-wrap">
           <table class="kal-grid" id="kalenderTable"></table>
         </div>
         <div class="legend">
-          <span><span class="box" style="background:var(--ok);"></span> Genehmigt</span>
-          <span><span class="box" style="background:var(--warn-bg); border:1px dashed var(--warn);"></span> Offen (beantragt)</span>
-          <span><span class="box" style="background:#f0f0f0;"></span> Wochenende</span>
-          <span><span class="box" style="background:#e6e6e6;"></span> Feiertag</span>
+          <span><span class="box" style="background:#2d8b4f;"></span> Genehmigt</span>
+          <span><span class="box" style="background:#fdf3d9; border-color:var(--warn);"></span> Offen (beantragt)</span>
+          <span><span class="box" style="background:#2b6cb0;"></span> Betriebsurlaub</span>
+          <span><span class="box" style="background:#ececec;"></span> Feiertag</span>
+          <span><span class="box" style="background:#f7f7f7;"></span> Wochenende</span>
+          <span><span class="box" style="border:2px solid var(--red); background:var(--white);"></span> Heute</span>
         </div>
       </div>
     </div>
@@ -507,6 +592,7 @@
           <div class="roles-check-row">
             <label><input type="checkbox" id="neueRolleAdmin"> Admin</label>
             <label><input type="checkbox" id="neueRolleExport"> Export</label>
+            <label><input type="checkbox" id="neueRolleFuerAndere"> Für andere eintragen</label>
             <label><input type="checkbox" id="neueRolleSuperadmin"> Superadmin</label>
             <label><input type="checkbox" id="neueRolleNurUebersicht"> Nur Übersicht (kein eigenes Urlaubskonto)</label>
             <button class="btn-primary btn-small" onclick="rolleSpeichern()">Speichern</button>
@@ -598,7 +684,7 @@ let MITARBEITER = MITARBEITER_FALLBACK.slice();
    ========================================================================= */
 const HARDCODED_ROLES = {
   'grisail@rudolf-hilgenroth.de': {admin:true, export:true, superadmin:true},
-  'busemann@rudolf-hilgenroth.de': {admin:true, export:true, nurUebersicht:true},
+  'busemann@rudolf-hilgenroth.de': {admin:true, export:true, nurUebersicht:true, fuerAndereEintragen:true},
   'r59.hilgenroth@web.de': {admin:true, nurUebersicht:true}
 };
 
@@ -624,6 +710,18 @@ function toKey(d){
   return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,'0')+"-"+String(d.getDate()).padStart(2,'0');
 }
 const BETRIEBSRUHE_TAGE = ["12-31"];
+
+// Betriebsurlaub (jedes Jahr wiederkehrend) - Format MM-DD
+const BETRIEBSURLAUB_RANGES = [
+  {startMD: '07-27', endeMD: '08-07'}
+];
+function istBetriebsurlaub(d){
+  const md = String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  return BETRIEBSURLAUB_RANGES.some(r => {
+    if(r.startMD <= r.endeMD) return md >= r.startMD && md <= r.endeMD;
+    return md >= r.startMD || md <= r.endeMD;
+  });
+}
 
 function feiertageFuerJahr(jahr){
   const ostern = osterSonntag(jahr);
@@ -744,7 +842,10 @@ function zeigeApp(){
   const effSuperadmin = berechtigung.superadmin;
   const nurUebersicht = !!berechtigung.nurUebersicht;
 
-  document.getElementById('antragTabBtn').classList.toggle('hidden', nurUebersicht);
+  const kannFuerAndere = !!(berechtigung.fuerAndereEintragen || berechtigung.superadmin);
+  // "Neuer Antrag" zeigen wenn: normaler Mitarbeiter ODER Admin mit fuerAndereEintragen
+  const zeigeAntragTab = !nurUebersicht || kannFuerAndere;
+  document.getElementById('antragTabBtn').classList.toggle('hidden', !zeigeAntragTab);
   document.getElementById('meineTabBtn').classList.toggle('hidden', nurUebersicht);
   document.getElementById('genehmigenTab').classList.toggle('hidden', !effAdmin);
   document.getElementById('monatTab').classList.toggle('hidden', !effAdmin);
@@ -758,8 +859,27 @@ function zeigeApp(){
   else if(effAdmin){ badge.textContent='ADMIN'; badge.classList.remove('hidden'); }
   else { badge.classList.add('hidden'); }
 
+  // Dropdown fuer "Antrag fuer Mitarbeiter" ein-/ausblenden und befuellen
+  const wrapper = document.getElementById('antragMitarbeiterWrapper');
+  if(kannFuerAndere){
+    wrapper.classList.remove('hidden');
+    const sel = document.getElementById('antragMitarbeiterSelect');
+    sel.innerHTML = '';
+    const liste = MITARBEITER.slice().sort((a,b)=> a.name.localeCompare(b.name,'de'));
+    liste.forEach(m=>{
+      const opt = document.createElement('option');
+      opt.value = m.name;
+      opt.textContent = m.name + ' (' + m.standort + ')';
+      opt.dataset.standort = m.standort;
+      if(!nurUebersicht && currentProfile && m.name === currentProfile.name) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  } else {
+    wrapper.classList.add('hidden');
+  }
+
   if(nurUebersicht){
-    switchTab(effAdmin ? 'genehmigen' : 'meine');
+    switchTab(effAdmin ? 'genehmigen' : (kannFuerAndere ? 'antrag' : 'meine'));
   } else {
     ladeMeineAntraege();
   }
@@ -932,10 +1052,27 @@ async function submitAntrag(){
     return;
   }
 
+  const kannFuerAndere = !!(berechtigung.fuerAndereEintragen || berechtigung.superadmin);
+  let zielName = currentProfile ? currentProfile.name : null;
+  let zielStandort = currentProfile ? currentProfile.standort : null;
+  if(kannFuerAndere){
+    const sel = document.getElementById('antragMitarbeiterSelect');
+    if(sel && sel.value){
+      zielName = sel.value;
+      zielStandort = sel.selectedOptions[0].dataset.standort || '';
+    }
+  }
+  if(!zielName){
+    zeigeFehler('antragError','Kein Mitarbeiter ausgewählt.');
+    return;
+  }
+
+  const istFuerAnderen = kannFuerAndere && currentProfile && zielName !== currentProfile.name;
+
   const antrag = {
     uid: currentUser.uid,
-    name: currentProfile.name,
-    standort: currentProfile.standort,
+    name: zielName,
+    standort: zielStandort || '',
     start, ende,
     halbTagStart: halbStart,
     halbTagEnde: halbEnde,
@@ -943,6 +1080,7 @@ async function submitAntrag(){
     bemerkung: bemerkung || null,
     status: 'offen',
     erstelltAm: firebase.database.ServerValue.TIMESTAMP,
+    erstelltVon: istFuerAnderen ? (currentProfile ? currentProfile.name : currentUser.email) : null,
     entschiedenAm: null,
     entschiedenVon: null,
     entscheidungKommentar: null
@@ -968,10 +1106,13 @@ async function submitAntrag(){
    MEINE ANTRAEGE
    ========================================================================= */
 function ladeMeineAntraege(){
-  db.ref('antraege').orderByChild('uid').equalTo(currentUser.uid).on('value', snap=>{
+  db.ref('antraege').on('value', snap=>{
     meineAntraegeCache = [];
     snap.forEach(child=>{
-      meineAntraegeCache.push({id:child.key, ...child.val()});
+      const a = {id:child.key, ...child.val()};
+      if(a.uid === currentUser.uid || (currentProfile && a.name === currentProfile.name)){
+        meineAntraegeCache.push(a);
+      }
     });
     meineAntraegeCache.sort((a,b)=> (b.erstelltAm||0) - (a.erstelltAm||0));
     renderMeineAntraege();
@@ -988,15 +1129,17 @@ function renderMeineAntraege(){
   meineAntraegeCache.forEach(a=>{
     const tr = document.createElement('tr');
     const zeitraum = formatDatum(a.start) + (a.start!==a.ende ? ' – '+formatDatum(a.ende) : '') +
-      (a.halbTagStart || a.halbTagEnde ? ' <span class="note" style="margin:0;">(halbe Tage)</span>' : '');
+      (a.halbTagStart || a.halbTagEnde ? ' <span class="note" style="margin:0;">(halbe Tage)</span>' : '') +
+      (a.erstelltVon && a.uid !== currentUser.uid ? '<br><span class="note" style="margin:0;">eingetragen von '+a.erstelltVon+'</span>' : '');
     const gestellt = a.erstelltAm ? new Date(a.erstelltAm).toLocaleDateString('de-DE') : '–';
+    const kannZurueckziehen = a.status==='offen' && a.uid===currentUser.uid;
     tr.innerHTML =
       '<td>'+zeitraum+'</td>'+
       '<td class="mono">'+String(a.tage).replace('.',',')+'</td>'+
       '<td><span class="badge badge-'+a.status+'">'+labelStatus(a.status)+'</span></td>'+
       '<td>'+(a.bemerkung || '<span class="note" style="margin:0;">–</span>')+'</td>'+
       '<td class="mono">'+gestellt+'</td>'+
-      '<td>'+(a.status==='offen' ? '<button class="btn-secondary btn-small" onclick="zurueckziehen(\''+a.id+'\')">Zurückziehen</button>' : '')+'</td>';
+      '<td>'+(kannZurueckziehen ? '<button class="btn-secondary btn-small" onclick="zurueckziehen(\''+a.id+'\')">Zurückziehen</button>' : '')+'</td>';
     body.appendChild(tr);
   });
 }
@@ -1063,18 +1206,20 @@ function renderAdminList(){
   gefiltert.forEach(a=>{
     const tr = document.createElement('tr');
     const zeitraum = formatDatum(a.start) + (a.start!==a.ende ? ' – '+formatDatum(a.ende) : '');
-    let aktion = '<span class="note" style="margin:0;">entschieden</span>';
+    let aktion = '';
     if(a.status==='offen'){
-      aktion = '<button class="btn-ok btn-small" onclick="entscheiden(\''+a.id+'\',\'genehmigt\')">Genehmigen</button>'+
-               '<button class="btn-danger btn-small" style="margin-left:6px;" onclick="entscheiden(\''+a.id+'\',\'abgelehnt\')">Ablehnen</button>';
+      aktion += '<button class="btn-ok btn-small" onclick="entscheiden(\''+a.id+'\',\'genehmigt\')">Genehmigen</button> '+
+                '<button class="btn-danger btn-small" onclick="entscheiden(\''+a.id+'\',\'abgelehnt\')">Ablehnen</button> ';
     }
+    aktion += '<button class="btn-secondary btn-small" onclick="openEditModal(\''+a.id+'\')">Bearbeiten</button> '+
+              '<button class="btn-danger btn-small" style="margin-left:4px;" onclick="adminLoeschen(\''+a.id+'\')">Löschen</button>';
     tr.innerHTML =
       '<td>'+a.name+'<br><span class="note" style="margin:0;">'+a.standort+'</span></td>'+
       '<td>'+zeitraum+'</td>'+
       '<td class="mono">'+String(a.tage).replace('.',',')+'</td>'+
       '<td><span class="badge badge-'+a.status+'">'+labelStatus(a.status)+'</span></td>'+
       '<td>'+(a.bemerkung || '–')+'</td>'+
-      '<td>'+aktion+'</td>';
+      '<td style="white-space:nowrap;">'+aktion+'</td>';
     body.appendChild(tr);
   });
 }
@@ -1087,6 +1232,76 @@ async function entscheiden(id, status){
       entschiedenVon: currentProfile.name,
       entscheidungKommentar: kommentar || null
     });
+  }catch(err){
+    alert('Fehler: '+err.message);
+  }
+}
+
+/* ---- ADMIN: BEARBEITEN & LOESCHEN ---- */
+let editingAntragId = null;
+
+function openEditModal(id){
+  const a = alleAntraegeCache.find(x=>x.id===id);
+  if(!a) return;
+  editingAntragId = id;
+  document.getElementById('editSubtitle').textContent = a.name + ' (' + a.standort + ')';
+  document.getElementById('editStart').value = a.start || '';
+  document.getElementById('editEnde').value = a.ende || '';
+  document.getElementById('editHalbTagStart').checked = !!a.halbTagStart;
+  document.getElementById('editHalbTagEnde').checked = !!a.halbTagEnde;
+  document.getElementById('editStatus').value = a.status || 'offen';
+  document.getElementById('editBemerkung').value = a.bemerkung || '';
+  hide('editError');
+  updateEditTagePreview();
+  show('editOverlay');
+}
+function closeEditModal(){
+  hide('editOverlay');
+  editingAntragId = null;
+}
+function updateEditTagePreview(){
+  const start = document.getElementById('editStart').value;
+  const ende = document.getElementById('editEnde').value;
+  const halbStart = document.getElementById('editHalbTagStart').checked;
+  const halbEnde = document.getElementById('editHalbTagEnde').checked;
+  const tage = berechneUrlaubstage(start, ende, halbStart, halbEnde);
+  document.getElementById('editTagePreviewVal').textContent = tage.toString().replace('.', ',');
+}
+async function submitEdit(){
+  hide('editError');
+  if(!editingAntragId) return;
+  const start = document.getElementById('editStart').value;
+  const ende = document.getElementById('editEnde').value;
+  const halbStart = document.getElementById('editHalbTagStart').checked;
+  const halbEnde = document.getElementById('editHalbTagEnde').checked;
+  const status = document.getElementById('editStatus').value;
+  const bemerkung = document.getElementById('editBemerkung').value.trim();
+  if(!start || !ende){ zeigeFehler('editError','Bitte Start- und Enddatum angeben.'); return; }
+  if(new Date(ende) < new Date(start)){ zeigeFehler('editError','Enddatum liegt vor dem Startdatum.'); return; }
+  const tage = berechneUrlaubstage(start, ende, halbStart, halbEnde);
+  if(tage <= 0){ zeigeFehler('editError','Der Zeitraum enthält keine Werktage.'); return; }
+  try{
+    await db.ref('antraege/'+editingAntragId).update({
+      start, ende,
+      halbTagStart: halbStart, halbTagEnde: halbEnde,
+      tage,
+      bemerkung: bemerkung || null,
+      status,
+      bearbeitetAm: firebase.database.ServerValue.TIMESTAMP,
+      bearbeitetVon: currentProfile.name
+    });
+    closeEditModal();
+  }catch(err){
+    zeigeFehler('editError','Fehler: '+err.message);
+  }
+}
+async function adminLoeschen(id){
+  const a = alleAntraegeCache.find(x=>x.id===id);
+  if(!a) return;
+  const info = a.name+' · '+formatDatum(a.start)+(a.start!==a.ende ? '–'+formatDatum(a.ende) : '')+' · '+String(a.tage).replace('.',',')+' Tag(e)';
+  if(!confirm('Diesen Antrag endgültig löschen?\n\n'+info)) return;
+  try{
+    await db.ref('antraege/'+id).remove();
   }catch(err){
     alert('Fehler: '+err.message);
   }
@@ -1288,9 +1503,27 @@ function renderKalender(){
   const jahr = parseInt(document.getElementById('kalenderJahr').value);
   if(isNaN(monat) || isNaN(jahr)) return;
   const tageImMonat = new Date(jahr, monat+1, 0).getDate();
+  const wochentagKurz = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+  const heute = new Date();
+  const istAktMonat = heute.getFullYear()===jahr && heute.getMonth()===monat;
 
-  let thead = '<thead><tr><th class="name-col">Mitarbeiter</th>';
-  for(let t=1; t<=tageImMonat; t++){ thead += '<th class="mono">'+t+'</th>'; }
+  // Header: Zeile 1 Tageszahl, Zeile 2 Wochentag-Kürzel
+  let thead = '<thead>';
+  thead += '<tr><th class="name-col" rowspan="2">Mitarbeiter</th>';
+  for(let t=1; t<=tageImMonat; t++){
+    const d = new Date(jahr, monat, t);
+    const isToday = istAktMonat && heute.getDate()===t;
+    const isWe = d.getDay()===0 || d.getDay()===6;
+    let cls = 'day-num';
+    if(isToday) cls += ' today-h';
+    else if(isWe) cls += ' we-h';
+    thead += '<th class="'+cls+'">'+t+'</th>';
+  }
+  thead += '</tr><tr>';
+  for(let t=1; t<=tageImMonat; t++){
+    const d = new Date(jahr, monat, t);
+    thead += '<th class="day-name">'+wochentagKurz[d.getDay()]+'</th>';
+  }
   thead += '</tr></thead>';
 
   let tbody = '<tbody>';
@@ -1299,21 +1532,27 @@ function renderKalender(){
     for(let t=1; t<=tageImMonat; t++){
       const d = new Date(jahr, monat, t);
       const key = toKey(d);
+      const isToday = istAktMonat && heute.getDate()===t;
       let cls = '';
+
+      // Priorität: individueller Antrag > Betriebsurlaub > Feiertag > Wochenende
+      if(d.getDay()===0 || d.getDay()===6) cls = 'we';
       if(istFeiertag(d)) cls = 'feiertag';
-      else if(d.getDay()===0 || d.getDay()===6) cls = 'we';
+      if(istBetriebsurlaub(d)) cls = 'betriebsurlaub';
 
       const treffer = alleAntraegeCache.find(a=> a.name===m.name && a.status!=='abgelehnt' && key>=a.start && key<=a.ende);
-      if(treffer){
-        cls = treffer.status==='genehmigt' ? 'genehmigt' : 'offen';
-      }
       let inhalt = '';
       if(treffer){
+        cls = treffer.status==='genehmigt' ? 'genehmigt' : 'offen';
         const istStart = key===treffer.start, istEnde = key===treffer.ende;
         if((istStart && treffer.halbTagStart) || (istEnde && treffer.halbTagEnde && !(istStart && treffer.halbTagStart))) inhalt = '½';
         else inhalt = '●';
+      } else if(cls==='betriebsurlaub'){
+        inhalt = '●';
       }
-      tbody += '<td class="'+cls+'">'+inhalt+'</td>';
+      if(isToday) cls += ' today';
+
+      tbody += '<td class="'+cls+'" title="'+m.name+' – '+formatDatum(key)+(treffer?' · '+labelStatus(treffer.status):(cls.includes('betriebsurlaub')?' · Betriebsurlaub':''))+'">'+inhalt+'</td>';
     }
     tbody += '</tr>';
   });
@@ -1334,6 +1573,7 @@ function exportKalenderExcel(){
       let wert = '';
       if(istFeiertag(d)) wert = 'F';
       else if(d.getDay()===0 || d.getDay()===6) wert = 'WE';
+      if(istBetriebsurlaub(d) && !treffer) wert = 'BU';
       if(treffer) wert = treffer.status==='genehmigt' ? 'X' : 'x?';
       row[t] = wert;
     }
@@ -1496,7 +1736,11 @@ function renderRollenListe(){
   keys.forEach(k=>{
     const r = rollenCache[k];
     const emailAnzeige = k.replace(/,/g, '.');
-    const rollenTxt = ['admin','export','superadmin','nurUebersicht'].filter(x=>r[x]).map(x=> x==='nurUebersicht' ? 'NUR ÜBERSICHT' : x.toUpperCase()).join(', ') || '–';
+    const rollenTxt = ['admin','export','fuerAndereEintragen','superadmin','nurUebersicht'].filter(x=>r[x]).map(x=>{
+      if(x==='nurUebersicht') return 'NUR ÜBERSICHT';
+      if(x==='fuerAndereEintragen') return 'FÜR ANDERE EINTRAGEN';
+      return x.toUpperCase();
+    }).join(', ') || '–';
     const tr = document.createElement('tr');
     tr.innerHTML =
       '<td class="mono">'+emailAnzeige+'</td>'+
@@ -1516,6 +1760,7 @@ async function rolleSpeichern(){
   const rolle = {
     admin: document.getElementById('neueRolleAdmin').checked,
     export: document.getElementById('neueRolleExport').checked,
+    fuerAndereEintragen: document.getElementById('neueRolleFuerAndere').checked,
     superadmin: document.getElementById('neueRolleSuperadmin').checked,
     nurUebersicht: document.getElementById('neueRolleNurUebersicht').checked
   };
@@ -1524,6 +1769,7 @@ async function rolleSpeichern(){
     document.getElementById('neueRolleEmail').value = '';
     document.getElementById('neueRolleAdmin').checked = false;
     document.getElementById('neueRolleExport').checked = false;
+    document.getElementById('neueRolleFuerAndere').checked = false;
     document.getElementById('neueRolleSuperadmin').checked = false;
     document.getElementById('neueRolleNurUebersicht').checked = false;
   }catch(err){
