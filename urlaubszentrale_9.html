@@ -1,0 +1,1543 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Urlaubszentrale | Rudolf Hilgenroth GmbH & Co. KG</title>
+
+<!-- ===================== FIREBASE SDK (compat, no build step) ===================== -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<!-- SheetJS fuer Excel-Export -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+  :root{
+    --red:#c8102e;
+    --red-dark:#96001f;
+    --black:#181818;
+    --gray-900:#232323;
+    --gray-700:#4a4a4a;
+    --gray-400:#8a8a8a;
+    --gray-200:#e2e2e2;
+    --gray-100:#f4f4f4;
+    --white:#ffffff;
+    --ok:#1a7a3c;
+    --ok-bg:#e6f4ea;
+    --warn:#b8860b;
+    --warn-bg:#fdf3d9;
+    --bad:#b3001f;
+    --bad-bg:#fbe4e7;
+    --gold:#8a5a00;
+    --gold-bg:#fdeecb;
+    --radius:6px;
+    --shadow:0 2px 10px rgba(0,0,0,0.08);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:Arial,Helvetica,sans-serif;
+    background:var(--gray-100);
+    color:var(--black);
+    min-height:100vh;
+  }
+  .mono{font-family:Consolas,Menlo,Monaco,'Courier New',monospace;}
+  header.topbar{
+    background:var(--black);
+    color:var(--white);
+    padding:14px 24px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    box-shadow:var(--shadow);
+    position:sticky; top:0; z-index:20;
+    flex-wrap:wrap; gap:10px;
+  }
+  header.topbar .brand{
+    display:flex; align-items:center; gap:12px;
+  }
+  header.topbar .brand .bar{
+    width:6px; height:28px; background:var(--red); display:inline-block; border-radius:2px;
+  }
+  header.topbar h1{
+    font-size:18px; margin:0; font-weight:800; letter-spacing:0.3px;
+  }
+  header.topbar .sub{
+    font-size:12px; color:var(--gray-400); font-weight:500;
+  }
+  header.topbar .user-info{
+    display:flex; align-items:center; gap:14px; font-size:14px;
+  }
+  header.topbar .user-info .name{font-weight:700;}
+  header.topbar .user-info .standort{
+    font-family:Consolas,Menlo,Monaco,'Courier New',monospace; font-size:11px; color:var(--gray-400);
+    border:1px solid #444; padding:2px 8px; border-radius:20px;
+  }
+  header.topbar .user-info .rolle-badge{
+    font-family:Consolas,Menlo,Monaco,'Courier New',monospace; font-size:10px; color:var(--black); background:var(--red);
+    padding:2px 8px; border-radius:20px; font-weight:700;
+  }
+  button{
+    font-family:Arial,Helvetica,sans-serif; cursor:pointer; border:none; border-radius:var(--radius);
+    font-weight:700; font-size:14px; padding:10px 18px; transition:filter .15s, transform .1s;
+  }
+  button:active{transform:scale(0.98);}
+  button:disabled{opacity:0.5; cursor:not-allowed;}
+  .btn-primary{background:var(--red); color:var(--white);}
+  .btn-primary:hover{filter:brightness(1.1);}
+  .btn-secondary{background:var(--white); color:var(--black); border:1.5px solid var(--gray-200);}
+  .btn-secondary:hover{background:var(--gray-100);}
+  .btn-dark{background:var(--black); color:var(--white);}
+  .btn-dark:hover{filter:brightness(1.3);}
+  .btn-danger{background:var(--bad); color:var(--white);}
+  .btn-ok{background:var(--ok); color:var(--white);}
+  .btn-gold{background:var(--gold); color:var(--white);}
+  .btn-small{padding:6px 12px; font-size:12.5px;}
+  .btn-link{background:none; color:var(--red); font-weight:700; padding:4px 0; font-size:13px;}
+
+  .container{max-width:1100px; margin:0 auto; padding:24px 20px 80px;}
+  .card{
+    background:var(--white); border-radius:8px; box-shadow:var(--shadow);
+    padding:24px; margin-bottom:22px; border-top:4px solid var(--red);
+  }
+  .card h2{margin-top:0; font-size:19px; font-weight:800; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;}
+  .card h2 .accent{color:var(--red);}
+  .card h2 .title-txt{display:flex; align-items:center; gap:8px;}
+
+  label{display:block; font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; color:var(--gray-700); margin:14px 0 5px;}
+  label:first-child{margin-top:0;}
+  input[type=date], input[type=email], input[type=password], input[type=text], input[type=number], select, textarea{
+    width:100%; padding:11px 12px; border:1.5px solid var(--gray-200); border-radius:var(--radius);
+    font-size:15px; font-family:Consolas,Menlo,Monaco,'Courier New',monospace; background:var(--white); color:var(--black);
+  }
+  textarea{font-family:Arial,Helvetica,sans-serif; min-height:70px; resize:vertical;}
+  select{font-family:Arial,Helvetica,sans-serif;}
+  input:focus, select:focus, textarea:focus{outline:none; border-color:var(--red);}
+
+  .row{display:flex; gap:16px; flex-wrap:wrap;}
+  .row > div{flex:1; min-width:180px;}
+
+  .checkbox-row{display:flex; align-items:center; gap:8px; margin-top:10px; font-size:14px;}
+  .checkbox-row input{width:auto;}
+
+  .tage-preview{
+    margin-top:16px; padding:14px 16px; background:var(--gray-100); border-radius:var(--radius);
+    display:flex; justify-content:space-between; align-items:center; font-size:14px;
+  }
+  .tage-preview .val{font-family:Consolas,Menlo,Monaco,'Courier New',monospace; font-size:22px; font-weight:700; color:var(--red);}
+
+  .badge{
+    display:inline-block; padding:3px 11px; border-radius:20px; font-size:12px; font-weight:700;
+    font-family:Consolas,Menlo,Monaco,'Courier New',monospace; letter-spacing:0.3px;
+  }
+  .badge-offen{background:var(--warn-bg); color:var(--warn);}
+  .badge-genehmigt{background:var(--ok-bg); color:var(--ok);}
+  .badge-abgelehnt{background:var(--bad-bg); color:var(--bad);}
+  .badge-rolle{background:var(--gold-bg); color:var(--gold);}
+
+  table{width:100%; border-collapse:collapse; font-size:14px;}
+  th{
+    text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:0.4px;
+    color:var(--gray-700); padding:8px 10px; border-bottom:2px solid var(--gray-200); white-space:nowrap;
+  }
+  td{padding:10px; border-bottom:1px solid var(--gray-200); vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  td.mono, th.mono{font-family:Consolas,Menlo,Monaco,'Courier New',monospace;}
+  .empty-state{text-align:center; color:var(--gray-400); padding:30px 10px; font-size:14px;}
+  .table-scroll{overflow-x:auto;}
+
+  .login-wrap{
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;
+    background:linear-gradient(160deg, var(--black) 0%, #2a2a2a 60%, var(--red-dark) 130%);
+  }
+  .login-card{
+    background:var(--white); border-radius:10px; padding:36px 32px; width:100%; max-width:380px;
+    box-shadow:0 20px 50px rgba(0,0,0,0.35); border-top:5px solid var(--red);
+  }
+  .login-card .logo-row{display:flex; align-items:center; gap:10px; margin-bottom:4px;}
+  .login-card .logo-row .bar{width:7px; height:32px; background:var(--red); border-radius:2px;}
+  .login-card h1{font-size:20px; margin:0 0 2px; font-weight:800;}
+  .login-card .sub{font-size:13px; color:var(--gray-700); margin-bottom:24px;}
+  .error-msg{
+    background:var(--bad-bg); color:var(--bad); padding:10px 12px; border-radius:var(--radius);
+    font-size:13px; margin-top:12px; font-weight:600;
+  }
+  .success-msg{background:var(--ok-bg); color:var(--ok); padding:10px 12px; border-radius:var(--radius); font-size:13px; margin-top:12px; font-weight:600;}
+
+  .onboarding-overlay{
+    position:fixed; inset:0; background:rgba(20,20,20,0.6); display:flex; align-items:center; justify-content:center;
+    z-index:50; padding:20px;
+  }
+  .onboarding-card{
+    background:var(--white); border-radius:10px; padding:30px; max-width:420px; width:100%;
+    border-top:5px solid var(--red); box-shadow:0 20px 50px rgba(0,0,0,0.35);
+  }
+
+  .tabs{display:flex; gap:6px; margin-bottom:20px; border-bottom:2px solid var(--gray-200); flex-wrap:wrap;}
+  .tab{
+    padding:10px 18px; font-weight:700; font-size:14px; cursor:pointer; color:var(--gray-700);
+    border-bottom:3px solid transparent; margin-bottom:-2px;
+  }
+  .tab.active{color:var(--red); border-bottom-color:var(--red);}
+
+  .filter-row{display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; align-items:center;}
+  .filter-row select{width:auto; min-width:160px;}
+
+  .hidden{display:none !important;}
+  .spinner{
+    width:18px; height:18px; border:3px solid var(--gray-200); border-top-color:var(--red);
+    border-radius:50%; animation:spin .7s linear infinite; display:inline-block; vertical-align:middle;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .loading-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px;
+    color:var(--gray-700); font-weight:600;
+  }
+  .note{font-size:12.5px; color:var(--gray-400); margin-top:6px;}
+  .footer-note{text-align:center; color:var(--gray-400); font-size:12px; margin-top:30px;}
+
+  .kal-grid{border-collapse:collapse; font-size:11.5px; width:100%;}
+  .kal-grid th{position:sticky; top:0; background:var(--white); z-index:2;}
+  .kal-grid th.name-col, .kal-grid td.name-col{
+    position:sticky; left:0; background:var(--white); z-index:1; text-align:left; font-weight:700;
+    min-width:150px; border-right:2px solid var(--gray-200); font-size:13px;
+  }
+  .kal-grid td{text-align:center; width:26px; padding:5px 2px; border:1px solid var(--gray-200); font-family:Consolas,Menlo,Monaco,'Courier New',monospace;}
+  .kal-grid td.we{background:#f0f0f0;}
+  .kal-grid td.feiertag{background:#e6e6e6;}
+  .kal-grid td.genehmigt{background:var(--ok); color:var(--white); font-weight:700;}
+  .kal-grid td.offen{background:var(--warn-bg); color:var(--warn); font-weight:700; border:1px dashed var(--warn);}
+  .legend{display:flex; gap:16px; margin-top:14px; font-size:12.5px; flex-wrap:wrap;}
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .legend .box{width:14px; height:14px; border-radius:3px; display:inline-block;}
+
+  .settings-section{border-top:1px solid var(--gray-200); padding-top:18px; margin-top:18px;}
+  .settings-section:first-of-type{border-top:none; padding-top:0; margin-top:0;}
+  .settings-section h3{font-size:15px; margin:0 0 12px;}
+  .inline-form{display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;}
+  .inline-form > div{flex:1; min-width:140px;}
+  .roles-check-row{display:flex; gap:18px; margin-top:8px; flex-wrap:wrap;}
+  .roles-check-row label{display:flex; align-items:center; gap:6px; text-transform:none; font-weight:600; font-size:13px; color:var(--black); margin:0;}
+  .roles-check-row input{width:auto;}
+</style>
+</head>
+<body>
+
+<!-- ===================== LOADING ===================== -->
+<div id="loadingScreen" class="loading-screen">
+  <div class="spinner"></div>
+  <div>Urlaubszentrale wird geladen…</div>
+</div>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="loginScreen" class="login-wrap hidden">
+  <div class="login-card">
+    <div class="logo-row"><span class="bar"></span><h1>Urlaubszentrale</h1></div>
+    <div class="sub">Rudolf Hilgenroth GmbH & Co. KG</div>
+    <label>E-Mail-Adresse</label>
+    <input type="email" id="loginEmail" autocomplete="username" placeholder="max.mustermann@hilgenroth.de">
+    <label>Passwort</label>
+    <input type="password" id="loginPassword" autocomplete="current-password" placeholder="••••••••">
+    <button class="btn-primary" style="width:100%; margin-top:20px;" onclick="handleLogin()">Anmelden</button>
+    <div id="loginError" class="error-msg hidden"></div>
+    <div class="note">Zugangsdaten wurden dir von der Verwaltung per Mail zugeschickt. Bei Problemen bitte an die Verwaltung wenden.</div>
+  </div>
+</div>
+
+<!-- ===================== ONBOARDING (Namenszuordnung) ===================== -->
+<div id="onboardingOverlay" class="onboarding-overlay hidden">
+  <div class="onboarding-card">
+    <h2 style="margin-top:0;">Willkommen 👋</h2>
+    <p style="font-size:14px; color:var(--gray-700);">Bevor es losgeht: Wer bist du? Diese Zuordnung wird einmalig gespeichert.</p>
+    <label>Mein Name</label>
+    <select id="onboardingSelect">
+      <option value="">– bitte wählen –</option>
+    </select>
+    <button class="btn-primary" style="width:100%; margin-top:18px;" onclick="handleOnboardingSave()">Bestätigen</button>
+    <div id="onboardingError" class="error-msg hidden"></div>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="app" class="hidden">
+  <header class="topbar">
+    <div class="brand">
+      <span class="bar"></span>
+      <div>
+        <h1>Urlaubszentrale</h1>
+        <div class="sub">Rudolf Hilgenroth GmbH & Co. KG</div>
+      </div>
+    </div>
+    <div class="user-info">
+      <span class="name" id="userNameDisplay"></span>
+      <span class="standort mono" id="userStandortDisplay"></span>
+      <span class="rolle-badge hidden" id="rolleBadge"></span>
+      <button class="btn-secondary btn-small" onclick="handleLogout()">Abmelden</button>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <div class="tabs" id="tabBar">
+      <div class="tab active" id="antragTabBtn" data-tab="antrag" onclick="switchTab('antrag')">Neuer Antrag</div>
+      <div class="tab" id="meineTabBtn" data-tab="meine" onclick="switchTab('meine')">Meine Anträge</div>
+      <div class="tab hidden" id="genehmigenTab" data-tab="genehmigen" onclick="switchTab('genehmigen')">Genehmigen</div>
+      <div class="tab hidden" id="monatTab" data-tab="monat" onclick="switchTab('monat')">Monatsübersicht</div>
+      <div class="tab hidden" id="resturlaubTab" data-tab="resturlaub" onclick="switchTab('resturlaub')">Resturlaub</div>
+      <div class="tab hidden" id="kalenderTab" data-tab="kalender" onclick="switchTab('kalender')">Kalender</div>
+      <div class="tab hidden" id="einstellungenTab" data-tab="einstellungen" onclick="switchTab('einstellungen')">Einstellungen</div>
+    </div>
+
+    <!-- TAB: Neuer Antrag -->
+    <div id="tab-antrag" class="tab-content">
+      <div class="card">
+        <h2><span class="title-txt">Neuen <span class="accent">Urlaubsantrag</span> stellen</span></h2>
+        <div class="row">
+          <div>
+            <label>Startdatum</label>
+            <input type="date" id="antragStart" onchange="updateTagePreview()">
+          </div>
+          <div>
+            <label>Enddatum</label>
+            <input type="date" id="antragEnde" onchange="updateTagePreview()">
+          </div>
+        </div>
+        <div class="row">
+          <div class="checkbox-row">
+            <input type="checkbox" id="halbTagStart" onchange="updateTagePreview()">
+            <label style="margin:0; text-transform:none; font-weight:600;" for="halbTagStart">Starttag: nur halber Tag</label>
+          </div>
+          <div class="checkbox-row">
+            <input type="checkbox" id="halbTagEnde" onchange="updateTagePreview()">
+            <label style="margin:0; text-transform:none; font-weight:600;" for="halbTagEnde">Endtag: nur halber Tag</label>
+          </div>
+        </div>
+        <label>Bemerkung (optional)</label>
+        <textarea id="antragBemerkung" placeholder="z. B. Grund, Vertretung, Sonderfall…"></textarea>
+
+        <div class="tage-preview">
+          <span>Beantragte Urlaubstage (Wochenenden &amp; NRW-Feiertage automatisch ausgeschlossen):</span>
+          <span class="val mono" id="tagePreviewVal">0</span>
+        </div>
+
+        <button class="btn-primary" style="margin-top:18px;" onclick="submitAntrag()">Antrag absenden</button>
+        <div id="antragError" class="error-msg hidden"></div>
+        <div id="antragSuccess" class="success-msg hidden"></div>
+      </div>
+    </div>
+
+    <!-- TAB: Meine Anträge -->
+    <div id="tab-meine" class="tab-content hidden">
+      <div class="card">
+        <h2><span class="title-txt">Meine <span class="accent">Anträge</span></span></h2>
+        <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Zeitraum</th><th class="mono">Tage</th><th>Status</th><th>Bemerkung</th><th>Gestellt am</th><th></th></tr>
+          </thead>
+          <tbody id="meineAntraegeBody"></tbody>
+        </table>
+        </div>
+        <div id="meineAntraegeEmpty" class="empty-state hidden">Noch keine Anträge gestellt.</div>
+      </div>
+    </div>
+
+    <!-- TAB: Genehmigen -->
+    <div id="tab-genehmigen" class="tab-content hidden">
+      <div class="card">
+        <h2>
+          <span class="title-txt">Anträge <span class="accent">genehmigen</span></span>
+          <button class="btn-secondary btn-small export-btn hidden" onclick="exportGenehmigenExcel()">📥 Excel-Export</button>
+        </h2>
+        <div class="filter-row">
+          <select id="adminFilterStatus" onchange="renderAdminList()">
+            <option value="alle">Alle Status</option>
+            <option value="offen">Offen</option>
+            <option value="genehmigt">Genehmigt</option>
+            <option value="abgelehnt">Abgelehnt</option>
+          </select>
+          <select id="adminFilterMitarbeiter" onchange="renderAdminList()">
+            <option value="alle">Alle Mitarbeiter</option>
+          </select>
+        </div>
+        <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Mitarbeiter</th><th>Zeitraum</th><th class="mono">Tage</th><th>Status</th><th>Bemerkung</th><th>Aktion</th></tr>
+          </thead>
+          <tbody id="adminAntraegeBody"></tbody>
+        </table>
+        </div>
+        <div id="adminAntraegeEmpty" class="empty-state hidden">Keine Anträge gefunden.</div>
+      </div>
+    </div>
+
+    <!-- TAB: Monatsübersicht -->
+    <div id="tab-monat" class="tab-content hidden">
+      <div class="card">
+        <h2>
+          <span class="title-txt"><span class="accent">Monats</span>übersicht</span>
+          <button class="btn-secondary btn-small export-btn hidden" onclick="exportMonatsuebersichtExcel()">📥 Excel-Export</button>
+        </h2>
+        <div class="filter-row">
+          <label style="margin:0; text-transform:none; font-weight:600;">Jahr:</label>
+          <select id="monatJahr" onchange="renderMonatsuebersicht()"></select>
+        </div>
+        <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Mitarbeiter</th><th>Standort</th>
+              <th class="mono">Jan</th><th class="mono">Feb</th><th class="mono">Mär</th><th class="mono">Apr</th>
+              <th class="mono">Mai</th><th class="mono">Jun</th><th class="mono">Jul</th><th class="mono">Aug</th>
+              <th class="mono">Sep</th><th class="mono">Okt</th><th class="mono">Nov</th><th class="mono">Dez</th>
+              <th class="mono">Genommen gesamt</th>
+            </tr>
+          </thead>
+          <tbody id="monatBody"></tbody>
+        </table>
+        </div>
+        <div class="note">Zählt genehmigte Anträge, aufgeteilt auf den jeweiligen Kalendermonat (auch bei Anträgen, die über Monatsgrenzen laufen).</div>
+      </div>
+    </div>
+
+    <!-- TAB: Resturlaub -->
+    <div id="tab-resturlaub" class="tab-content hidden">
+      <div class="card">
+        <h2>
+          <span class="title-txt"><span class="accent">Resturlaub</span>-Übersicht</span>
+          <button class="btn-secondary btn-small export-btn hidden" onclick="exportResturlaubExcel()">📥 Excel-Export</button>
+        </h2>
+        <div class="filter-row">
+          <label style="margin:0; text-transform:none; font-weight:600;">Jahr:</label>
+          <select id="resturlaubJahr" onchange="renderResturlaub()"></select>
+        </div>
+        <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Mitarbeiter</th><th>Standort</th><th class="mono">Rest Vorjahr</th><th class="mono">Anspruch</th><th class="mono">Genommen (genehmigt)</th><th class="mono">Resturlaub</th></tr>
+          </thead>
+          <tbody id="resturlaubBody"></tbody>
+        </table>
+        </div>
+        <div class="note">"Genommen" zählt nur genehmigte Anträge mit Startdatum im gewählten Jahr, die bereits in dieser App gestellt wurden. Ältere/historische Urlaubstage aus 2026 (vor Einführung der App) sind ggf. nicht erfasst — bitte mit der bisherigen Excel abgleichen.</div>
+      </div>
+    </div>
+
+    <!-- TAB: Kalender -->
+    <div id="tab-kalender" class="tab-content hidden">
+      <div class="card">
+        <h2>
+          <span class="title-txt">Team-<span class="accent">Kalender</span></span>
+          <button class="btn-secondary btn-small export-btn hidden" onclick="exportKalenderExcel()">📥 Excel-Export</button>
+        </h2>
+        <div class="filter-row">
+          <label style="margin:0; text-transform:none; font-weight:600;">Monat:</label>
+          <select id="kalenderMonat" onchange="renderKalender()"></select>
+          <label style="margin:0; text-transform:none; font-weight:600;">Jahr:</label>
+          <select id="kalenderJahr" onchange="renderKalender()"></select>
+        </div>
+        <div class="table-scroll">
+          <table class="kal-grid" id="kalenderTable"></table>
+        </div>
+        <div class="legend">
+          <span><span class="box" style="background:var(--ok);"></span> Genehmigt</span>
+          <span><span class="box" style="background:var(--warn-bg); border:1px dashed var(--warn);"></span> Offen (beantragt)</span>
+          <span><span class="box" style="background:#f0f0f0;"></span> Wochenende</span>
+          <span><span class="box" style="background:#e6e6e6;"></span> Feiertag</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Einstellungen -->
+    <div id="tab-einstellungen" class="tab-content hidden">
+      <div class="card">
+        <h2><span class="title-txt">⚙️ <span class="accent">Einstellungen</span></span></h2>
+
+        <div class="settings-section">
+          <h3>Mitarbeiterverwaltung</h3>
+          <div class="note" style="margin-bottom:10px;">Wenn du hier die E-Mail-Adresse eines Mitarbeiters einträgst, wird er beim Login automatisch erkannt und muss seinen Namen nicht mehr auswählen.</div>
+          <div class="table-scroll">
+          <table>
+            <thead><tr><th>Name</th><th>Standort</th><th>E-Mail (Auto-Login)</th><th></th></tr></thead>
+            <tbody id="einstellungenMitarbeiterBody"></tbody>
+          </table>
+          </div>
+          <div class="inline-form" style="margin-top:14px;">
+            <div><label>Name</label><input type="text" id="neuerMaName" placeholder="Vorname Nachname"></div>
+            <div><label>Standort</label>
+              <select id="neuerMaStandort">
+                <option value="RH Sundern">RH Sundern</option>
+                <option value="RH Hellefeld">RH Hellefeld</option>
+              </select>
+            </div>
+            <div><label>E-Mail (optional)</label><input type="email" id="neuerMaEmail" placeholder="name@rudolf-hilgenroth.de"></div>
+            <div style="flex:0;"><button class="btn-primary" onclick="mitarbeiterHinzufuegen()">Hinzufügen</button></div>
+          </div>
+          <div id="mitarbeiterListeNote" class="note hidden"></div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Urlaubsanspruch &amp; Rest aus Vorjahr</h3>
+          <div class="filter-row">
+            <label style="margin:0; text-transform:none; font-weight:600;">Jahr:</label>
+            <select id="stammdatenJahr" onchange="renderStammdatenEditor()"></select>
+          </div>
+          <div class="table-scroll">
+          <table>
+            <thead><tr><th>Mitarbeiter</th><th class="mono">Rest Vorjahr</th><th class="mono">Anspruch (Jahr)</th><th></th></tr></thead>
+            <tbody id="stammdatenBody"></tbody>
+          </table>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Rollen &amp; Berechtigungen</h3>
+          <div class="note" style="margin-bottom:10px;">Admin: Anträge genehmigen, Resturlaub- &amp; Kalenderübersicht. Export: zusätzlich Excel-Export. Superadmin: zusätzlich Zugriff auf diese Einstellungen.</div>
+          <div class="table-scroll">
+          <table>
+            <thead><tr><th>E-Mail</th><th>Rollen</th><th></th></tr></thead>
+            <tbody id="rollenBody"></tbody>
+          </table>
+          </div>
+          <div class="inline-form" style="margin-top:14px;">
+            <div><label>E-Mail</label><input type="text" id="neueRolleEmail" placeholder="name@rudolf-hilgenroth.de"></div>
+          </div>
+          <div class="roles-check-row">
+            <label><input type="checkbox" id="neueRolleAdmin"> Admin</label>
+            <label><input type="checkbox" id="neueRolleExport"> Export</label>
+            <label><input type="checkbox" id="neueRolleSuperadmin"> Superadmin</label>
+            <label><input type="checkbox" id="neueRolleNurUebersicht"> Nur Übersicht (kein eigenes Urlaubskonto)</label>
+            <button class="btn-primary btn-small" onclick="rolleSpeichern()">Speichern</button>
+          </div>
+          <div id="rollenError" class="error-msg hidden"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="footer-note">Rudolf Hilgenroth GmbH & Co. KG · Interne Urlaubszentrale</div>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   FIREBASE-KONFIGURATION
+   ========================================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyBd3e88rV6TfTPL43P5f4XXWU_6s1JJQx0",
+  authDomain: "urlaubs-planer.firebaseapp.com",
+  databaseURL: "https://urlaubs-planer-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "urlaubs-planer",
+  storageBucket: "urlaubs-planer.firebasestorage.app",
+  messagingSenderId: "434983070559",
+  appId: "1:434983070559:web:fab05d7c3c9268fca124ea"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.database();
+
+/* =========================================================================
+   MITARBEITERLISTE (Fallback, falls in Firebase /mitarbeiterListe noch nichts
+   hinterlegt ist. Superadmin kann die Liste unter Einstellungen pflegen.)
+   ========================================================================= */
+const MITARBEITER_FALLBACK = [
+  {name:"Jan Bräutigam", standort:"RH Sundern"},
+  {name:"Christoph Brüggemann", standort:"RH Sundern"},
+  {name:"Anette Busemann", standort:"RH Sundern"},
+  {name:"Robin Gatzemeier", standort:"RH Sundern"},
+  {name:"Rüdiger Greve", standort:"RH Sundern"},
+  {name:"Pascal Grisail", standort:"RH Sundern"},
+  {name:"Sebastian Hauschulte", standort:"RH Sundern"},
+  {name:"Walter Husteden", standort:"RH Sundern"},
+  {name:"Christoph Kremer", standort:"RH Sundern"},
+  {name:"Andrea Liedhegener", standort:"RH Sundern"},
+  {name:"Stefan Lucas", standort:"RH Sundern"},
+  {name:"Dennis Maag", standort:"RH Sundern"},
+  {name:"Daniela Miederhoff", standort:"RH Sundern"},
+  {name:"Dominik Schulte", standort:"RH Sundern"},
+  {name:"Matthias Struwe", standort:"RH Sundern"},
+  {name:"Andreas Tschernisch", standort:"RH Sundern"},
+  {name:"Jonas Werthschulte", standort:"RH Sundern"},
+  {name:"Vera Henneke", standort:"RH Hellefeld"},
+  {name:"Andre Niepel", standort:"RH Hellefeld"}
+];
+
+// Stammdaten-Fallback (Anspruch / Rest aus Vorjahr) fuer 2026, aus der bisherigen Excel uebernommen.
+// Bitte in den Einstellungen pruefen - v.a. Werthschulte/Henneke/Niepel waren in der Quelle unvollstaendig.
+const STAMMDATEN_FALLBACK_2026 = {
+  "Jan Bräutigam": {restVorjahr:4, anspruch:30},
+  "Christoph Brüggemann": {restVorjahr:13, anspruch:30},
+  "Anette Busemann": {restVorjahr:62, anspruch:30},
+  "Robin Gatzemeier": {restVorjahr:2, anspruch:30},
+  "Rüdiger Greve": {restVorjahr:-4, anspruch:30},
+  "Pascal Grisail": {restVorjahr:0, anspruch:22},
+  "Sebastian Hauschulte": {restVorjahr:53, anspruch:30},
+  "Walter Husteden": {restVorjahr:15, anspruch:24},
+  "Christoph Kremer": {restVorjahr:14, anspruch:30},
+  "Andrea Liedhegener": {restVorjahr:22, anspruch:30},
+  "Stefan Lucas": {restVorjahr:12.5, anspruch:30},
+  "Dennis Maag": {restVorjahr:7.5, anspruch:30},
+  "Daniela Miederhoff": {restVorjahr:9, anspruch:12},
+  "Dominik Schulte": {restVorjahr:21.5, anspruch:30},
+  "Matthias Struwe": {restVorjahr:0, anspruch:24},
+  "Andreas Tschernisch": {restVorjahr:2.5, anspruch:30},
+  "Jonas Werthschulte": {restVorjahr:2, anspruch:30},
+  "Vera Henneke": {restVorjahr:0, anspruch:30},
+  "Andre Niepel": {restVorjahr:0, anspruch:30}
+};
+
+let MITARBEITER = MITARBEITER_FALLBACK.slice();
+
+/* =========================================================================
+   ROLLEN-FALLBACK
+   Falls in Firebase unter "berechtigungen" fuer eine E-Mail noch nichts
+   hinterlegt ist, gelten diese Werte. Firebase-Eintraege haben Vorrang.
+   ========================================================================= */
+const HARDCODED_ROLES = {
+  'grisail@rudolf-hilgenroth.de': {admin:true, export:true, superadmin:true},
+  'busemann@rudolf-hilgenroth.de': {admin:true, export:true, nurUebersicht:true},
+  'r59.hilgenroth@web.de': {admin:true, nurUebersicht:true}
+};
+
+/* =========================================================================
+   NRW-FEIERTAGE (inkl. beweglicher Feiertage per Gauss'scher Osterformel)
+   ========================================================================= */
+function osterSonntag(jahr){
+  const a = jahr % 19, b = Math.floor(jahr/100), c = jahr % 100;
+  const d = Math.floor(b/4), e = b % 4, f = Math.floor((b+8)/25), g = Math.floor((b-f+1)/3);
+  const h = (19*a + b - d - g + 15) % 30;
+  const i = Math.floor(c/4), k = c % 4, l = (32 + 2*e + 2*i - h - k) % 7;
+  const m = Math.floor((a + 11*h + 22*l)/451);
+  const monat = Math.floor((h + l - 7*m + 114)/31);
+  const tag = ((h + l - 7*m + 114) % 31) + 1;
+  return new Date(jahr, monat-1, tag);
+}
+function addTage(datum, n){
+  const d = new Date(datum);
+  d.setDate(d.getDate()+n);
+  return d;
+}
+function toKey(d){
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,'0')+"-"+String(d.getDate()).padStart(2,'0');
+}
+const BETRIEBSRUHE_TAGE = ["12-31"];
+
+function feiertageFuerJahr(jahr){
+  const ostern = osterSonntag(jahr);
+  const set = new Set();
+  set.add(toKey(new Date(jahr,0,1)));
+  set.add(toKey(addTage(ostern,-2)));
+  set.add(toKey(addTage(ostern,1)));
+  set.add(toKey(new Date(jahr,4,1)));
+  set.add(toKey(addTage(ostern,39)));
+  set.add(toKey(addTage(ostern,50)));
+  set.add(toKey(addTage(ostern,60)));
+  set.add(toKey(new Date(jahr,9,3)));
+  set.add(toKey(new Date(jahr,10,1)));
+  set.add(toKey(new Date(jahr,11,25)));
+  set.add(toKey(new Date(jahr,11,26)));
+  BETRIEBSRUHE_TAGE.forEach(md=>set.add(jahr+"-"+md));
+  return set;
+}
+const feiertageCache = {};
+function getFeiertage(jahr){
+  if(!feiertageCache[jahr]) feiertageCache[jahr] = feiertageFuerJahr(jahr);
+  return feiertageCache[jahr];
+}
+function istFeiertagOderWochenende(d){
+  const wochentag = d.getDay();
+  if(wochentag===0 || wochentag===6) return true;
+  return getFeiertage(d.getFullYear()).has(toKey(d));
+}
+function istFeiertag(d){
+  const wochentag = d.getDay();
+  if(wochentag===0 || wochentag===6) return false;
+  return getFeiertage(d.getFullYear()).has(toKey(d));
+}
+
+function berechneUrlaubstage(startStr, endeStr, halbStart, halbEnde){
+  if(!startStr || !endeStr) return 0;
+  const start = new Date(startStr+"T00:00:00");
+  const ende = new Date(endeStr+"T00:00:00");
+  if(ende < start) return 0;
+  let tage = 0;
+  let cur = new Date(start);
+  while(cur <= ende){
+    if(!istFeiertagOderWochenende(cur)){
+      let wert = 1;
+      const istStart = toKey(cur) === toKey(start);
+      const istEnde = toKey(cur) === toKey(ende);
+      if(istStart && halbStart) wert = 0.5;
+      if(istEnde && halbEnde) wert = (istStart && halbStart) ? wert : 0.5;
+      tage += wert;
+    }
+    cur = addTage(cur,1);
+  }
+  return tage;
+}
+
+function emailKey(email){
+  return (email||'').trim().toLowerCase().replace(/\./g, ',');
+}
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+let currentUser = null;
+let currentProfile = null;
+let berechtigung = {admin:false, export:false, superadmin:false};
+let meineAntraegeCache = [];
+let alleAntraegeCache = [];
+let stammdatenCache = {};
+let rollenCache = {};
+
+/* =========================================================================
+   AUTH FLOW
+   ========================================================================= */
+auth.onAuthStateChanged(async (user)=>{
+  if(user){
+    currentUser = user;
+    await ladeProfil(user.uid);
+  } else {
+    currentUser = null;
+    zeigeLogin();
+  }
+});
+
+function zeigeLoading(){
+  hide('loginScreen'); hide('onboardingOverlay'); hide('app');
+  show('loadingScreen');
+}
+function zeigeLogin(){
+  hide('loadingScreen'); hide('onboardingOverlay'); hide('app');
+  show('loginScreen');
+}
+function zeigeOnboarding(){
+  hide('loadingScreen'); hide('loginScreen'); hide('app');
+  const sel = document.getElementById('onboardingSelect');
+  sel.innerHTML = '<option value="">– bitte wählen –</option>';
+  MITARBEITER.forEach((m,idx)=>{
+    const opt = document.createElement('option');
+    opt.value = idx;
+    opt.textContent = m.name + " (" + m.standort + ")";
+    sel.appendChild(opt);
+  });
+  show('onboardingOverlay');
+}
+function zeigeApp(){
+  hide('loadingScreen'); hide('loginScreen'); hide('onboardingOverlay');
+  show('app');
+  document.getElementById('userNameDisplay').textContent = currentProfile.name;
+  const standortEl = document.getElementById('userStandortDisplay');
+  if(currentProfile.standort){
+    standortEl.textContent = currentProfile.standort;
+    standortEl.classList.remove('hidden');
+  } else {
+    standortEl.classList.add('hidden');
+  }
+
+  const effAdmin = berechtigung.admin || berechtigung.superadmin;
+  const effExport = berechtigung.export || berechtigung.superadmin;
+  const effSuperadmin = berechtigung.superadmin;
+  const nurUebersicht = !!berechtigung.nurUebersicht;
+
+  document.getElementById('antragTabBtn').classList.toggle('hidden', nurUebersicht);
+  document.getElementById('meineTabBtn').classList.toggle('hidden', nurUebersicht);
+  document.getElementById('genehmigenTab').classList.toggle('hidden', !effAdmin);
+  document.getElementById('monatTab').classList.toggle('hidden', !effAdmin);
+  document.getElementById('resturlaubTab').classList.toggle('hidden', !effAdmin);
+  document.getElementById('kalenderTab').classList.toggle('hidden', !effAdmin);
+  document.getElementById('einstellungenTab').classList.toggle('hidden', !effSuperadmin);
+  document.querySelectorAll('.export-btn').forEach(b=>b.classList.toggle('hidden', !effExport));
+
+  const badge = document.getElementById('rolleBadge');
+  if(effSuperadmin){ badge.textContent='SUPERADMIN'; badge.classList.remove('hidden'); }
+  else if(effAdmin){ badge.textContent='ADMIN'; badge.classList.remove('hidden'); }
+  else { badge.classList.add('hidden'); }
+
+  if(nurUebersicht){
+    switchTab(effAdmin ? 'genehmigen' : 'meine');
+  } else {
+    ladeMeineAntraege();
+  }
+  if(effAdmin){
+    befuelleJahresauswahl();
+    ladeAlleAntraege();
+  }
+  if(effSuperadmin){
+    ladeMitarbeiterListe();
+    ladeStammdaten();
+    ladeRollen();
+  }
+}
+function show(id){ document.getElementById(id).classList.remove('hidden'); }
+function hide(id){ document.getElementById(id).classList.add('hidden'); }
+
+function nameAusEmail(email){
+  const local = (email||'').split('@')[0];
+  return local.split(/[._-]/).map(t=> t.charAt(0).toUpperCase()+t.slice(1)).join(' ');
+}
+
+async function ladeProfil(uid){
+  zeigeLoading();
+  try{
+    const key = emailKey(currentUser.email);
+    const emailLower = (currentUser.email||'').trim().toLowerCase();
+    const rolleSnap = await db.ref('berechtigungen/'+key).get();
+    if(rolleSnap.exists()){
+      berechtigung = Object.assign({admin:false,export:false,superadmin:false,nurUebersicht:false}, rolleSnap.val());
+    } else if(HARDCODED_ROLES[emailLower]){
+      berechtigung = Object.assign({admin:false,export:false,superadmin:false,nurUebersicht:false}, HARDCODED_ROLES[emailLower]);
+    } else {
+      berechtigung = {admin:false,export:false,superadmin:false,nurUebersicht:false};
+    }
+
+    // Reine Uebersichts-/Chef-Accounts (z.B. Vorgesetzte ohne eigenes Urlaubskonto):
+    // ueberspringen Namenszuordnung und Antrags-Tabs komplett.
+    if(berechtigung.nurUebersicht){
+      currentProfile = {name: nameAusEmail(currentUser.email), standort: ''};
+      zeigeApp();
+      return;
+    }
+
+    const profilSnap = await db.ref('mitarbeiterZuordnung/'+uid).get();
+
+    // Mitarbeiterliste vorab laden (fuer Onboarding-Dropdown), Fallback falls leer
+    const listeSnap = await db.ref('mitarbeiterListe').get();
+    if(listeSnap.exists()){
+      const val = listeSnap.val();
+      MITARBEITER = Object.keys(val).map(k=>val[k]);
+    } else {
+      MITARBEITER = MITARBEITER_FALLBACK.slice();
+    }
+
+    if(profilSnap.exists()){
+      currentProfile = profilSnap.val();
+      zeigeApp();
+    } else {
+      // Auto-Zuweisung: Wenn die Login-E-Mail in mitarbeiterListe hinterlegt ist,
+      // Namen direkt uebernehmen und Onboarding ueberspringen.
+      const emailLower = (currentUser.email||'').trim().toLowerCase();
+      const zugewiesen = MITARBEITER.find(m => (m.email||'').toLowerCase() === emailLower);
+      if(zugewiesen){
+        currentProfile = {name: zugewiesen.name, standort: zugewiesen.standort, email: currentUser.email};
+        try{ await db.ref('mitarbeiterZuordnung/'+uid).set(currentProfile); }catch(e){}
+        zeigeApp();
+      } else {
+        zeigeOnboarding();
+      }
+    }
+  }catch(err){
+    console.error(err);
+    zeigeLogin();
+    zeigeFehler('loginError', 'Fehler beim Laden des Profils: '+err.message);
+  }
+}
+
+function handleLogin(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const pw = document.getElementById('loginPassword').value;
+  hide('loginError');
+  if(!email || !pw){
+    zeigeFehler('loginError','Bitte E-Mail und Passwort eingeben.');
+    return;
+  }
+  auth.signInWithEmailAndPassword(email, pw).catch(err=>{
+    zeigeFehler('loginError', uebersetzeFehler(err));
+  });
+}
+function handleLogout(){
+  auth.signOut();
+}
+function uebersetzeFehler(err){
+  const map = {
+    'auth/invalid-email':'Ungültige E-Mail-Adresse.',
+    'auth/user-not-found':'Kein Konto mit dieser E-Mail gefunden.',
+    'auth/wrong-password':'Falsches Passwort.',
+    'auth/invalid-credential':'E-Mail oder Passwort falsch.',
+    'auth/too-many-requests':'Zu viele Versuche. Bitte kurz warten.'
+  };
+  return map[err.code] || ('Anmeldung fehlgeschlagen: '+err.message);
+}
+function zeigeFehler(elId, msg){
+  const el = document.getElementById(elId);
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+async function handleOnboardingSave(){
+  const sel = document.getElementById('onboardingSelect');
+  hide('onboardingError');
+  if(sel.value === ""){
+    zeigeFehler('onboardingError','Bitte wähle deinen Namen aus.');
+    return;
+  }
+  const m = MITARBEITER[sel.value];
+  const profil = {name:m.name, standort:m.standort, email:currentUser.email};
+  try{
+    await db.ref('mitarbeiterZuordnung/'+currentUser.uid).set(profil);
+    currentProfile = profil;
+    zeigeApp();
+  }catch(err){
+    zeigeFehler('onboardingError','Speichern fehlgeschlagen: '+err.message);
+  }
+}
+
+/* =========================================================================
+   TABS
+   ========================================================================= */
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===name));
+  document.querySelectorAll('.tab-content').forEach(c=>c.classList.add('hidden'));
+  document.getElementById('tab-'+name).classList.remove('hidden');
+  if(name==='kalender') renderKalender();
+  if(name==='resturlaub') renderResturlaub();
+  if(name==='monat') renderMonatsuebersicht();
+}
+
+/* =========================================================================
+   ANTRAG STELLEN
+   ========================================================================= */
+function updateTagePreview(){
+  const start = document.getElementById('antragStart').value;
+  const ende = document.getElementById('antragEnde').value;
+  const halbStart = document.getElementById('halbTagStart').checked;
+  const halbEnde = document.getElementById('halbTagEnde').checked;
+  const tage = berechneUrlaubstage(start, ende, halbStart, halbEnde);
+  document.getElementById('tagePreviewVal').textContent = tage.toString().replace('.', ',');
+}
+
+async function submitAntrag(){
+  hide('antragError'); hide('antragSuccess');
+  const start = document.getElementById('antragStart').value;
+  const ende = document.getElementById('antragEnde').value;
+  const halbStart = document.getElementById('halbTagStart').checked;
+  const halbEnde = document.getElementById('halbTagEnde').checked;
+  const bemerkung = document.getElementById('antragBemerkung').value.trim();
+
+  if(!start || !ende){
+    zeigeFehler('antragError','Bitte Start- und Enddatum angeben.');
+    return;
+  }
+  if(new Date(ende) < new Date(start)){
+    zeigeFehler('antragError','Das Enddatum liegt vor dem Startdatum.');
+    return;
+  }
+  const tage = berechneUrlaubstage(start, ende, halbStart, halbEnde);
+  if(tage <= 0){
+    zeigeFehler('antragError','Der gewählte Zeitraum enthält keine Werktage (nur Wochenende/Feiertage).');
+    return;
+  }
+
+  const antrag = {
+    uid: currentUser.uid,
+    name: currentProfile.name,
+    standort: currentProfile.standort,
+    start, ende,
+    halbTagStart: halbStart,
+    halbTagEnde: halbEnde,
+    tage,
+    bemerkung: bemerkung || null,
+    status: 'offen',
+    erstelltAm: firebase.database.ServerValue.TIMESTAMP,
+    entschiedenAm: null,
+    entschiedenVon: null,
+    entscheidungKommentar: null
+  };
+
+  try{
+    await db.ref('antraege').push(antrag);
+    const ok = document.getElementById('antragSuccess');
+    ok.textContent = 'Antrag erfolgreich gestellt (' + tage.toString().replace('.',',') + ' Tag(e)). Status: offen.';
+    ok.classList.remove('hidden');
+    document.getElementById('antragStart').value = '';
+    document.getElementById('antragEnde').value = '';
+    document.getElementById('halbTagStart').checked = false;
+    document.getElementById('halbTagEnde').checked = false;
+    document.getElementById('antragBemerkung').value = '';
+    updateTagePreview();
+  }catch(err){
+    zeigeFehler('antragError','Fehler beim Absenden: '+err.message);
+  }
+}
+
+/* =========================================================================
+   MEINE ANTRAEGE
+   ========================================================================= */
+function ladeMeineAntraege(){
+  db.ref('antraege').orderByChild('uid').equalTo(currentUser.uid).on('value', snap=>{
+    meineAntraegeCache = [];
+    snap.forEach(child=>{
+      meineAntraegeCache.push({id:child.key, ...child.val()});
+    });
+    meineAntraegeCache.sort((a,b)=> (b.erstelltAm||0) - (a.erstelltAm||0));
+    renderMeineAntraege();
+  });
+}
+function renderMeineAntraege(){
+  const body = document.getElementById('meineAntraegeBody');
+  body.innerHTML = '';
+  if(meineAntraegeCache.length===0){
+    show('meineAntraegeEmpty');
+    return;
+  }
+  hide('meineAntraegeEmpty');
+  meineAntraegeCache.forEach(a=>{
+    const tr = document.createElement('tr');
+    const zeitraum = formatDatum(a.start) + (a.start!==a.ende ? ' – '+formatDatum(a.ende) : '') +
+      (a.halbTagStart || a.halbTagEnde ? ' <span class="note" style="margin:0;">(halbe Tage)</span>' : '');
+    const gestellt = a.erstelltAm ? new Date(a.erstelltAm).toLocaleDateString('de-DE') : '–';
+    tr.innerHTML =
+      '<td>'+zeitraum+'</td>'+
+      '<td class="mono">'+String(a.tage).replace('.',',')+'</td>'+
+      '<td><span class="badge badge-'+a.status+'">'+labelStatus(a.status)+'</span></td>'+
+      '<td>'+(a.bemerkung || '<span class="note" style="margin:0;">–</span>')+'</td>'+
+      '<td class="mono">'+gestellt+'</td>'+
+      '<td>'+(a.status==='offen' ? '<button class="btn-secondary btn-small" onclick="zurueckziehen(\''+a.id+'\')">Zurückziehen</button>' : '')+'</td>';
+    body.appendChild(tr);
+  });
+}
+async function zurueckziehen(id){
+  if(!confirm('Diesen Antrag wirklich zurückziehen?')) return;
+  try{
+    await db.ref('antraege/'+id).remove();
+  }catch(err){
+    alert('Fehler: '+err.message);
+  }
+}
+function labelStatus(s){
+  return {offen:'Offen', genehmigt:'Genehmigt', abgelehnt:'Abgelehnt'}[s] || s;
+}
+function formatDatum(str){
+  if(!str) return '–';
+  const [j,m,t] = str.split('-');
+  return t+'.'+m+'.'+j;
+}
+
+/* =========================================================================
+   GENEHMIGEN (Admin)
+   ========================================================================= */
+function ladeAlleAntraege(){
+  db.ref('antraege').on('value', snap=>{
+    alleAntraegeCache = [];
+    snap.forEach(child=>{
+      alleAntraegeCache.push({id:child.key, ...child.val()});
+    });
+    alleAntraegeCache.sort((a,b)=> (b.erstelltAm||0) - (a.erstelltAm||0));
+    befuelleMitarbeiterFilter();
+    renderAdminList();
+    renderResturlaub();
+    renderKalender();
+    renderMonatsuebersicht();
+  });
+}
+function befuelleMitarbeiterFilter(){
+  const sel = document.getElementById('adminFilterMitarbeiter');
+  const bisher = new Set(Array.from(sel.options).map(o=>o.value));
+  const namen = [...new Set(alleAntraegeCache.map(a=>a.name))].sort();
+  namen.forEach(n=>{
+    if(!bisher.has(n)){
+      const opt = document.createElement('option');
+      opt.value = n; opt.textContent = n;
+      sel.appendChild(opt);
+    }
+  });
+}
+function renderAdminList(){
+  const statusFilter = document.getElementById('adminFilterStatus').value;
+  const mitarbeiterFilter = document.getElementById('adminFilterMitarbeiter').value;
+  const body = document.getElementById('adminAntraegeBody');
+  body.innerHTML = '';
+  const gefiltert = alleAntraegeCache.filter(a=>
+    (statusFilter==='alle' || a.status===statusFilter) &&
+    (mitarbeiterFilter==='alle' || a.name===mitarbeiterFilter)
+  );
+  if(gefiltert.length===0){
+    show('adminAntraegeEmpty');
+    return;
+  }
+  hide('adminAntraegeEmpty');
+  gefiltert.forEach(a=>{
+    const tr = document.createElement('tr');
+    const zeitraum = formatDatum(a.start) + (a.start!==a.ende ? ' – '+formatDatum(a.ende) : '');
+    let aktion = '<span class="note" style="margin:0;">entschieden</span>';
+    if(a.status==='offen'){
+      aktion = '<button class="btn-ok btn-small" onclick="entscheiden(\''+a.id+'\',\'genehmigt\')">Genehmigen</button>'+
+               '<button class="btn-danger btn-small" style="margin-left:6px;" onclick="entscheiden(\''+a.id+'\',\'abgelehnt\')">Ablehnen</button>';
+    }
+    tr.innerHTML =
+      '<td>'+a.name+'<br><span class="note" style="margin:0;">'+a.standort+'</span></td>'+
+      '<td>'+zeitraum+'</td>'+
+      '<td class="mono">'+String(a.tage).replace('.',',')+'</td>'+
+      '<td><span class="badge badge-'+a.status+'">'+labelStatus(a.status)+'</span></td>'+
+      '<td>'+(a.bemerkung || '–')+'</td>'+
+      '<td>'+aktion+'</td>';
+    body.appendChild(tr);
+  });
+}
+async function entscheiden(id, status){
+  const kommentar = status==='abgelehnt' ? prompt('Kommentar zur Ablehnung (optional):','') : null;
+  try{
+    await db.ref('antraege/'+id).update({
+      status,
+      entschiedenAm: firebase.database.ServerValue.TIMESTAMP,
+      entschiedenVon: currentProfile.name,
+      entscheidungKommentar: kommentar || null
+    });
+  }catch(err){
+    alert('Fehler: '+err.message);
+  }
+}
+function exportGenehmigenExcel(){
+  const rows = alleAntraegeCache.map(a=>({
+    Mitarbeiter: a.name,
+    Standort: a.standort,
+    Start: formatDatum(a.start),
+    Ende: formatDatum(a.ende),
+    Tage: a.tage,
+    Status: labelStatus(a.status),
+    Bemerkung: a.bemerkung || '',
+    'Gestellt am': a.erstelltAm ? new Date(a.erstelltAm).toLocaleDateString('de-DE') : '',
+    'Entschieden von': a.entschiedenVon || '',
+    'Kommentar Entscheidung': a.entscheidungKommentar || ''
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Anträge');
+  XLSX.writeFile(wb, 'Urlaubsantraege_Export_'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
+
+/* =========================================================================
+   MONATSUEBERSICHT
+   ========================================================================= */
+// Zerlegt einen genehmigten Antrag in einzelne Werktage mit Wert (1 oder 0.5),
+// damit Anträge über Monatsgrenzen hinweg korrekt aufgeteilt werden können.
+function tageDetailProAntrag(a){
+  const result = [];
+  const start = new Date(a.start+"T00:00:00");
+  const ende = new Date(a.ende+"T00:00:00");
+  let cur = new Date(start);
+  while(cur <= ende){
+    if(!istFeiertagOderWochenende(cur)){
+      let wert = 1;
+      const istStart = toKey(cur) === toKey(start);
+      const istEnde = toKey(cur) === toKey(ende);
+      if(istStart && a.halbTagStart) wert = 0.5;
+      if(istEnde && a.halbTagEnde) wert = (istStart && a.halbTagStart) ? wert : 0.5;
+      result.push({datum:new Date(cur), wert});
+    }
+    cur = addTage(cur,1);
+  }
+  return result;
+}
+function berechneMonatsverteilung(name, jahr){
+  const monate = new Array(12).fill(0);
+  alleAntraegeCache
+    .filter(a=>a.name===name && a.status==='genehmigt')
+    .forEach(a=>{
+      tageDetailProAntrag(a).forEach(t=>{
+        if(t.datum.getFullYear() === Number(jahr)){
+          monate[t.datum.getMonth()] += t.wert;
+        }
+      });
+    });
+  return monate;
+}
+function renderMonatsuebersicht(){
+  const body = document.getElementById('monatBody');
+  if(!body) return;
+  const jahrSel = document.getElementById('monatJahr');
+  if(!jahrSel.value) return;
+  const jahr = jahrSel.value;
+  body.innerHTML = '';
+  MITARBEITER.forEach(m=>{
+    const monate = berechneMonatsverteilung(m.name, jahr);
+    const gesamt = monate.reduce((s,v)=>s+v,0);
+    const tr = document.createElement('tr');
+    let zellen = '<td>'+m.name+'</td><td>'+m.standort+'</td>';
+    monate.forEach(v=>{ zellen += '<td class="mono">'+String(v).replace('.',',')+'</td>'; });
+    zellen += '<td class="mono" style="font-weight:700;">'+String(gesamt).replace('.',',')+'</td>';
+    tr.innerHTML = zellen;
+    body.appendChild(tr);
+  });
+}
+function exportMonatsuebersichtExcel(){
+  const jahr = document.getElementById('monatJahr').value;
+  const monatsNamen = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  const rows = MITARBEITER.map(m=>{
+    const monate = berechneMonatsverteilung(m.name, jahr);
+    const row = {Mitarbeiter:m.name, Standort:m.standort};
+    monatsNamen.forEach((mn,idx)=>{ row[mn] = monate[idx]; });
+    row['Genommen gesamt'] = monate.reduce((s,v)=>s+v,0);
+    return row;
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Monatsübersicht '+jahr);
+  XLSX.writeFile(wb, 'Monatsuebersicht_'+jahr+'_Export_'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
+
+/* =========================================================================
+   RESTURLAUB
+   ========================================================================= */
+function befuelleJahresauswahl(){
+  const jetzt = new Date().getFullYear();
+  const jahre = [jetzt-1, jetzt, jetzt+1];
+  const selR = document.getElementById('resturlaubJahr');
+  const selS = document.getElementById('stammdatenJahr');
+  const selM = document.getElementById('monatJahr');
+  [selR, selS, selM].forEach(sel=>{
+    if(sel.options.length>0) return;
+    jahre.forEach(j=>{
+      const opt = document.createElement('option');
+      opt.value=j; opt.textContent=j;
+      if(j===jetzt) opt.selected=true;
+      sel.appendChild(opt);
+    });
+  });
+}
+function ladeStammdaten(){
+  db.ref('stammdaten').on('value', snap=>{
+    stammdatenCache = snap.exists() ? snap.val() : {};
+    renderResturlaub();
+    renderStammdatenEditor();
+  });
+}
+function getStammdatum(jahr, name){
+  if(stammdatenCache[jahr] && stammdatenCache[jahr][name]) return stammdatenCache[jahr][name];
+  if(String(jahr)==='2026' && STAMMDATEN_FALLBACK_2026[name]) return STAMMDATEN_FALLBACK_2026[name];
+  return {restVorjahr:0, anspruch:30};
+}
+function renderResturlaub(){
+  const body = document.getElementById('resturlaubBody');
+  if(!body) return;
+  const jahrSel = document.getElementById('resturlaubJahr');
+  if(!jahrSel.value) return;
+  const jahr = jahrSel.value;
+  body.innerHTML = '';
+  MITARBEITER.forEach(m=>{
+    const sd = getStammdatum(jahr, m.name);
+    const genommen = alleAntraegeCache
+      .filter(a=>a.name===m.name && a.status==='genehmigt' && a.start && a.start.startsWith(jahr))
+      .reduce((sum,a)=>sum+Number(a.tage||0),0);
+    const resturlaub = Number(sd.restVorjahr) + Number(sd.anspruch) - genommen;
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>'+m.name+'</td>'+
+      '<td>'+m.standort+'</td>'+
+      '<td class="mono">'+String(sd.restVorjahr).replace('.',',')+'</td>'+
+      '<td class="mono">'+String(sd.anspruch).replace('.',',')+'</td>'+
+      '<td class="mono">'+String(genommen).replace('.',',')+'</td>'+
+      '<td class="mono" style="font-weight:700;">'+String(resturlaub).replace('.',',')+'</td>';
+    body.appendChild(tr);
+  });
+}
+function exportResturlaubExcel(){
+  const jahr = document.getElementById('resturlaubJahr').value;
+  const rows = MITARBEITER.map(m=>{
+    const sd = getStammdatum(jahr, m.name);
+    const genommen = alleAntraegeCache
+      .filter(a=>a.name===m.name && a.status==='genehmigt' && a.start && a.start.startsWith(jahr))
+      .reduce((sum,a)=>sum+Number(a.tage||0),0);
+    const resturlaub = Number(sd.restVorjahr) + Number(sd.anspruch) - genommen;
+    return {
+      Mitarbeiter: m.name, Standort: m.standort,
+      'Rest Vorjahr': sd.restVorjahr, Anspruch: sd.anspruch,
+      'Genommen (genehmigt)': genommen, Resturlaub: resturlaub
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Resturlaub '+jahr);
+  XLSX.writeFile(wb, 'Resturlaub_'+jahr+'_Export_'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
+
+/* =========================================================================
+   KALENDER
+   ========================================================================= */
+function befuelleKalenderAuswahl(){
+  const selM = document.getElementById('kalenderMonat');
+  const selJ = document.getElementById('kalenderJahr');
+  if(selM.options.length===0){
+    const monate = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+    monate.forEach((m,idx)=>{
+      const opt = document.createElement('option');
+      opt.value=idx; opt.textContent=m;
+      if(idx===new Date().getMonth()) opt.selected=true;
+      selM.appendChild(opt);
+    });
+  }
+  if(selJ.options.length===0){
+    const jetzt = new Date().getFullYear();
+    [jetzt-1,jetzt,jetzt+1].forEach(j=>{
+      const opt = document.createElement('option');
+      opt.value=j; opt.textContent=j;
+      if(j===jetzt) opt.selected=true;
+      selJ.appendChild(opt);
+    });
+  }
+}
+function renderKalender(){
+  befuelleKalenderAuswahl();
+  const table = document.getElementById('kalenderTable');
+  if(!table) return;
+  const monat = parseInt(document.getElementById('kalenderMonat').value);
+  const jahr = parseInt(document.getElementById('kalenderJahr').value);
+  if(isNaN(monat) || isNaN(jahr)) return;
+  const tageImMonat = new Date(jahr, monat+1, 0).getDate();
+
+  let thead = '<thead><tr><th class="name-col">Mitarbeiter</th>';
+  for(let t=1; t<=tageImMonat; t++){ thead += '<th class="mono">'+t+'</th>'; }
+  thead += '</tr></thead>';
+
+  let tbody = '<tbody>';
+  MITARBEITER.forEach(m=>{
+    tbody += '<tr><td class="name-col">'+m.name+'</td>';
+    for(let t=1; t<=tageImMonat; t++){
+      const d = new Date(jahr, monat, t);
+      const key = toKey(d);
+      let cls = '';
+      if(istFeiertag(d)) cls = 'feiertag';
+      else if(d.getDay()===0 || d.getDay()===6) cls = 'we';
+
+      const treffer = alleAntraegeCache.find(a=> a.name===m.name && a.status!=='abgelehnt' && key>=a.start && key<=a.ende);
+      if(treffer){
+        cls = treffer.status==='genehmigt' ? 'genehmigt' : 'offen';
+      }
+      let inhalt = '';
+      if(treffer){
+        const istStart = key===treffer.start, istEnde = key===treffer.ende;
+        if((istStart && treffer.halbTagStart) || (istEnde && treffer.halbTagEnde && !(istStart && treffer.halbTagStart))) inhalt = '½';
+        else inhalt = '●';
+      }
+      tbody += '<td class="'+cls+'">'+inhalt+'</td>';
+    }
+    tbody += '</tr>';
+  });
+  tbody += '</tbody>';
+
+  table.innerHTML = thead + tbody;
+}
+function exportKalenderExcel(){
+  const monat = parseInt(document.getElementById('kalenderMonat').value);
+  const jahr = parseInt(document.getElementById('kalenderJahr').value);
+  const tageImMonat = new Date(jahr, monat+1, 0).getDate();
+  const rows = MITARBEITER.map(m=>{
+    const row = {Mitarbeiter: m.name, Standort: m.standort};
+    for(let t=1; t<=tageImMonat; t++){
+      const d = new Date(jahr, monat, t);
+      const key = toKey(d);
+      const treffer = alleAntraegeCache.find(a=> a.name===m.name && a.status!=='abgelehnt' && key>=a.start && key<=a.ende);
+      let wert = '';
+      if(istFeiertag(d)) wert = 'F';
+      else if(d.getDay()===0 || d.getDay()===6) wert = 'WE';
+      if(treffer) wert = treffer.status==='genehmigt' ? 'X' : 'x?';
+      row[t] = wert;
+    }
+    return row;
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  const monatsName = document.getElementById('kalenderMonat').selectedOptions[0].textContent;
+  XLSX.utils.book_append_sheet(wb, ws, monatsName+' '+jahr);
+  XLSX.writeFile(wb, 'Kalender_'+monatsName+'_'+jahr+'.xlsx');
+}
+
+/* =========================================================================
+   EINSTELLUNGEN (Superadmin)
+   ========================================================================= */
+function ladeMitarbeiterListe(){
+  db.ref('mitarbeiterListe').on('value', snap=>{
+    if(snap.exists()){
+      const val = snap.val();
+      MITARBEITER = Object.keys(val).map(k=>({...val[k], _key:k}));
+      hide('mitarbeiterListeNote');
+    } else {
+      MITARBEITER = MITARBEITER_FALLBACK.map((m,i)=>({...m, _key:null, _fallbackIndex:i}));
+      const note = document.getElementById('mitarbeiterListeNote');
+      note.textContent = 'Es ist noch keine Mitarbeiterliste in Firebase hinterlegt - es wird die Standardliste angezeigt. Sobald du einen Mitarbeiter hinzufügst, wird die Liste in Firebase gespeichert.';
+      note.classList.remove('hidden');
+    }
+    renderMitarbeiterEditor();
+    renderResturlaub();
+    renderKalender();
+    renderMonatsuebersicht();
+  });
+}
+function renderMitarbeiterEditor(){
+  const body = document.getElementById('einstellungenMitarbeiterBody');
+  if(!body) return;
+  body.innerHTML = '';
+  MITARBEITER.forEach((m,idx)=>{
+    const tr = document.createElement('tr');
+    const idSafe = 'ma_'+idx;
+    const nameEsc = m.name.replace(/'/g,"\\'");
+    const standortEsc = m.standort.replace(/'/g,"\\'");
+    const emailVal = (m.email || '').replace(/"/g,'&quot;');
+    const loeschBtn = m._key ? '<button class="btn-danger btn-small" onclick="mitarbeiterLoeschen(\''+m._key+'\')">Entfernen</button>' : '<span class="note" style="margin:0;">Standardliste</span>';
+    const keyArg = m._key ? "'"+m._key+"'" : 'null';
+    tr.innerHTML =
+      '<td>'+m.name+'</td>'+
+      '<td>'+m.standort+'</td>'+
+      '<td><input type="email" id="mailInput_'+idSafe+'" value="'+emailVal+'" placeholder="name@rudolf-hilgenroth.de" style="font-size:13px;"></td>'+
+      '<td>'+
+        '<button class="btn-primary btn-small" onclick="mitarbeiterEmailSpeichern(\''+idSafe+'\',\''+nameEsc+'\',\''+standortEsc+'\','+keyArg+')">E-Mail speichern</button> '+
+        loeschBtn+
+      '</td>';
+    body.appendChild(tr);
+  });
+}
+async function mitarbeiterHinzufuegen(){
+  const name = document.getElementById('neuerMaName').value.trim();
+  const standort = document.getElementById('neuerMaStandort').value;
+  const email = document.getElementById('neuerMaEmail').value.trim().toLowerCase();
+  if(!name){ alert('Bitte einen Namen eingeben.'); return; }
+  try{
+    const snap = await db.ref('mitarbeiterListe').get();
+    if(!snap.exists()){
+      const updates = {};
+      MITARBEITER_FALLBACK.forEach(m=>{
+        const key = db.ref('mitarbeiterListe').push().key;
+        updates[key] = m;
+      });
+      await db.ref('mitarbeiterListe').set(updates);
+    }
+    const eintrag = {name, standort};
+    if(email) eintrag.email = email;
+    await db.ref('mitarbeiterListe').push(eintrag);
+    document.getElementById('neuerMaName').value = '';
+    document.getElementById('neuerMaEmail').value = '';
+  }catch(err){
+    alert('Fehler: '+err.message);
+  }
+}
+async function mitarbeiterEmailSpeichern(idSafe, name, standort, key){
+  const email = document.getElementById('mailInput_'+idSafe).value.trim().toLowerCase();
+  try{
+    let effKey = key;
+    // Falls noch keine Firebase-Liste existiert: Fallback initial hochladen und Key des passenden Eintrags merken
+    if(!effKey){
+      const snap = await db.ref('mitarbeiterListe').get();
+      if(!snap.exists()){
+        const updates = {};
+        MITARBEITER_FALLBACK.forEach(m=>{
+          const k = db.ref('mitarbeiterListe').push().key;
+          updates[k] = m;
+          if(m.name===name && m.standort===standort) effKey = k;
+        });
+        await db.ref('mitarbeiterListe').set(updates);
+      }
+    }
+    if(!effKey){ alert('Konnte Mitarbeiter-Eintrag nicht finden.'); return; }
+    if(email){
+      await db.ref('mitarbeiterListe/'+effKey+'/email').set(email);
+    } else {
+      await db.ref('mitarbeiterListe/'+effKey+'/email').remove();
+    }
+  }catch(err){
+    alert('Fehler: '+err.message);
+  }
+}
+async function mitarbeiterLoeschen(key){
+  if(!confirm('Diesen Mitarbeiter wirklich entfernen? (Bestehende Anträge bleiben erhalten)')) return;
+  try{
+    await db.ref('mitarbeiterListe/'+key).remove();
+  }catch(err){
+    alert('Fehler: '+err.message);
+  }
+}
+
+function renderStammdatenEditor(){
+  const body = document.getElementById('stammdatenBody');
+  const jahrSel = document.getElementById('stammdatenJahr');
+  if(!body || !jahrSel.value) return;
+  const jahr = jahrSel.value;
+  body.innerHTML = '';
+  MITARBEITER.forEach(m=>{
+    const sd = getStammdatum(jahr, m.name);
+    const idSafe = m.name.replace(/[^a-zA-Z0-9]/g,'_');
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>'+m.name+'</td>'+
+      '<td><input type="number" step="0.5" id="rv_'+idSafe+'" value="'+sd.restVorjahr+'" style="width:90px;"></td>'+
+      '<td><input type="number" step="0.5" id="an_'+idSafe+'" value="'+sd.anspruch+'" style="width:90px;"></td>'+
+      '<td><button class="btn-primary btn-small" onclick="stammdatumSpeichern(\''+jahr+'\',\''+m.name.replace(/'/g,"\\'")+'\',\''+idSafe+'\')">Speichern</button></td>';
+    body.appendChild(tr);
+  });
+}
+async function stammdatumSpeichern(jahr, name, idSafe){
+  const rv = parseFloat(document.getElementById('rv_'+idSafe).value) || 0;
+  const an = parseFloat(document.getElementById('an_'+idSafe).value) || 0;
+  try{
+    await db.ref('stammdaten/'+jahr+'/'+name).set({restVorjahr:rv, anspruch:an});
+  }catch(err){
+    alert('Fehler: '+err.message);
+  }
+}
+
+function ladeRollen(){
+  db.ref('berechtigungen').on('value', snap=>{
+    rollenCache = snap.exists() ? snap.val() : {};
+    renderRollenListe();
+  });
+}
+function renderRollenListe(){
+  const body = document.getElementById('rollenBody');
+  if(!body) return;
+  body.innerHTML = '';
+  const keys = Object.keys(rollenCache);
+  if(keys.length===0){
+    body.innerHTML = '<tr><td colspan="3" class="empty-state">Noch keine Rollen vergeben.</td></tr>';
+    return;
+  }
+  keys.forEach(k=>{
+    const r = rollenCache[k];
+    const emailAnzeige = k.replace(/,/g, '.');
+    const rollenTxt = ['admin','export','superadmin','nurUebersicht'].filter(x=>r[x]).map(x=> x==='nurUebersicht' ? 'NUR ÜBERSICHT' : x.toUpperCase()).join(', ') || '–';
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="mono">'+emailAnzeige+'</td>'+
+      '<td><span class="badge badge-rolle">'+rollenTxt+'</span></td>'+
+      '<td><button class="btn-danger btn-small" onclick="rolleLoeschen(\''+k+'\')">Entfernen</button></td>';
+    body.appendChild(tr);
+  });
+}
+async function rolleSpeichern(){
+  hide('rollenError');
+  const email = document.getElementById('neueRolleEmail').value.trim();
+  if(!email || !email.includes('@')){
+    zeigeFehler('rollenError','Bitte eine gültige E-Mail-Adresse eingeben.');
+    return;
+  }
+  const key = emailKey(email);
+  const rolle = {
+    admin: document.getElementById('neueRolleAdmin').checked,
+    export: document.getElementById('neueRolleExport').checked,
+    superadmin: document.getElementById('neueRolleSuperadmin').checked,
+    nurUebersicht: document.getElementById('neueRolleNurUebersicht').checked
+  };
+  try{
+    await db.ref('berechtigungen/'+key).set(rolle);
+    document.getElementById('neueRolleEmail').value = '';
+    document.getElementById('neueRolleAdmin').checked = false;
+    document.getElementById('neueRolleExport').checked = false;
+    document.getElementById('neueRolleSuperadmin').checked = false;
+    document.getElementById('neueRolleNurUebersicht').checked = false;
+  }catch(err){
+    zeigeFehler('rollenError','Fehler beim Speichern: '+err.message);
+  }
+}
+async function rolleLoeschen(key){
+  if(!confirm('Diese Rolle wirklich entfernen?')) return;
+  try{
+    await db.ref('berechtigungen/'+key).remove();
+  }catch(err){
+    alert('Fehler: '+err.message);
+  }
+}
+</script>
+</body>
+</html>
