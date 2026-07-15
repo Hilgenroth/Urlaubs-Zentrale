@@ -694,7 +694,8 @@ let MITARBEITER = MITARBEITER_FALLBACK.slice();
 // Arbeitstage-Fallback fuer Mitarbeiter mit reduzierter Wochenarbeitszeit.
 // Format: JS-Wochentag-Nummern (1=Montag ... 5=Freitag). Ohne Eintrag = Mo-Fr (Standard).
 const ARBEITSTAGE_FALLBACK = {
-  "Daniela Miederhoff": [2,3,4] // Dienstag - Donnerstag
+  "Daniela Miederhoff": [2,3,4], // Dienstag - Donnerstag
+  "Walter Husteden": [1,2,3,4]  // Montag - Donnerstag
 };
 function getArbeitstage(name){
   const m = MITARBEITER.find(x=>x.name===name);
