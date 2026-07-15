@@ -278,6 +278,20 @@
   </div>
 </div>
 
+<!-- ===================== PASSWORT ÄNDERN (Pflicht bei Erstanmeldung) ===================== -->
+<div id="pwChangeOverlay" class="onboarding-overlay hidden">
+  <div class="onboarding-card">
+    <h2 style="margin-top:0;">🔒 Neues Passwort festlegen</h2>
+    <p style="font-size:14px; color:var(--gray-700);">Du meldest dich gerade mit einem vorläufigen Start-Passwort an. Bitte lege jetzt dein persönliches Passwort fest.</p>
+    <label>Neues Passwort</label>
+    <input type="password" id="pwChangeNeu" autocomplete="new-password" placeholder="mind. 6 Zeichen">
+    <label>Neues Passwort bestätigen</label>
+    <input type="password" id="pwChangeWiederholt" autocomplete="new-password" placeholder="Wiederholung">
+    <button class="btn-primary" style="width:100%; margin-top:18px;" onclick="handlePasswortAendern()">Passwort speichern</button>
+    <div id="pwChangeError" class="error-msg hidden"></div>
+  </div>
+</div>
+
 <!-- ===================== ONBOARDING (Namenszuordnung) ===================== -->
 <div id="onboardingOverlay" class="onboarding-overlay hidden">
   <div class="onboarding-card">
@@ -545,7 +559,7 @@
           <div class="note" style="margin-bottom:10px;">Wenn du hier die E-Mail-Adresse eines Mitarbeiters einträgst, wird er beim Login automatisch erkannt und muss seinen Namen nicht mehr auswählen.</div>
           <div class="table-scroll">
           <table>
-            <thead><tr><th>Name</th><th>Standort</th><th>E-Mail (Auto-Login)</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Standort</th><th>E-Mail (Auto-Login)</th><th>Passwort</th><th></th></tr></thead>
             <tbody id="einstellungenMitarbeiterBody"></tbody>
           </table>
           </div>
@@ -791,6 +805,7 @@ let meineAntraegeCache = [];
 let alleAntraegeCache = [];
 let stammdatenCache = {};
 let rollenCache = {};
+let pwStatusCache = {};
 
 /* =========================================================================
    AUTH FLOW
@@ -798,6 +813,16 @@ let rollenCache = {};
 auth.onAuthStateChanged(async (user)=>{
   if(user){
     currentUser = user;
+    const key = emailKey(user.email);
+    try{
+      const pwSnap = await db.ref('passwortAendernErforderlich/'+key).get();
+      if(pwSnap.exists() && pwSnap.val() === true){
+        zeigePasswortAendern();
+        return;
+      }
+    }catch(err){
+      console.error('Passwort-Status konnte nicht geprüft werden:', err);
+    }
     await ladeProfil(user.uid);
   } else {
     currentUser = null;
@@ -805,16 +830,49 @@ auth.onAuthStateChanged(async (user)=>{
   }
 });
 
+function zeigePasswortAendern(){
+  hide('loadingScreen'); hide('loginScreen'); hide('onboardingOverlay'); hide('app');
+  document.getElementById('pwChangeNeu').value = '';
+  document.getElementById('pwChangeWiederholt').value = '';
+  hide('pwChangeError');
+  show('pwChangeOverlay');
+}
+async function handlePasswortAendern(){
+  hide('pwChangeError');
+  const neu = document.getElementById('pwChangeNeu').value;
+  const wdh = document.getElementById('pwChangeWiederholt').value;
+  if(!neu || neu.length < 6){
+    zeigeFehler('pwChangeError','Das Passwort muss mindestens 6 Zeichen lang sein.');
+    return;
+  }
+  if(neu !== wdh){
+    zeigeFehler('pwChangeError','Die Passwörter stimmen nicht überein.');
+    return;
+  }
+  try{
+    await currentUser.updatePassword(neu);
+    await db.ref('passwortAendernErforderlich/'+emailKey(currentUser.email)).set(false);
+    hide('pwChangeOverlay');
+    await ladeProfil(currentUser.uid);
+  }catch(err){
+    let msg = 'Fehler: '+err.message;
+    if(err.code === 'auth/requires-recent-login'){
+      msg = 'Aus Sicherheitsgründen bitte einmal ab- und wieder anmelden, dann erneut versuchen.';
+    }
+    zeigeFehler('pwChangeError', msg);
+  }
+}
+
 function zeigeLoading(){
-  hide('loginScreen'); hide('onboardingOverlay'); hide('app');
+  hide('loginScreen'); hide('onboardingOverlay'); hide('app'); hide('pwChangeOverlay');
   show('loadingScreen');
 }
 function zeigeLogin(){
-  hide('loadingScreen'); hide('onboardingOverlay'); hide('app');
+  hide('loadingScreen'); hide('onboardingOverlay'); hide('app'); hide('pwChangeOverlay');
   show('loginScreen');
 }
 function zeigeOnboarding(){
-  hide('loadingScreen'); hide('loginScreen'); hide('app');
+  hide('loadingScreen'); hide('loginScreen'); hide('app'); hide('pwChangeOverlay');
   const sel = document.getElementById('onboardingSelect');
   sel.innerHTML = '<option value="">– bitte wählen –</option>';
   MITARBEITER.forEach((m,idx)=>{
@@ -826,7 +884,7 @@ function zeigeOnboarding(){
   show('onboardingOverlay');
 }
 function zeigeApp(){
-  hide('loadingScreen'); hide('loginScreen'); hide('onboardingOverlay');
+  hide('loadingScreen'); hide('loginScreen'); hide('onboardingOverlay'); hide('pwChangeOverlay');
   show('app');
   document.getElementById('userNameDisplay').textContent = currentProfile.name;
   const standortEl = document.getElementById('userStandortDisplay');
@@ -891,6 +949,7 @@ function zeigeApp(){
     ladeMitarbeiterListe();
     ladeStammdaten();
     ladeRollen();
+    ladePasswortStatus();
   }
 }
 function show(id){ document.getElementById(id).classList.remove('hidden'); }
@@ -1607,6 +1666,12 @@ function ladeMitarbeiterListe(){
     renderMonatsuebersicht();
   });
 }
+function ladePasswortStatus(){
+  db.ref('passwortAendernErforderlich').on('value', snap=>{
+    pwStatusCache = snap.exists() ? snap.val() : {};
+    renderMitarbeiterEditor();
+  });
+}
 function renderMitarbeiterEditor(){
   const body = document.getElementById('einstellungenMitarbeiterBody');
   if(!body) return;
@@ -1619,16 +1684,38 @@ function renderMitarbeiterEditor(){
     const emailVal = (m.email || '').replace(/"/g,'&quot;');
     const loeschBtn = m._key ? '<button class="btn-danger btn-small" onclick="mitarbeiterLoeschen(\''+m._key+'\')">Entfernen</button>' : '<span class="note" style="margin:0;">Standardliste</span>';
     const keyArg = m._key ? "'"+m._key+"'" : 'null';
+
+    let pwZelle = '<span class="note" style="margin:0;">–</span>';
+    if(m.email){
+      const eKey = emailKey(m.email);
+      const mussAendern = pwStatusCache[eKey] === true;
+      if(mussAendern){
+        pwZelle = '<span class="badge badge-offen" style="margin-right:6px;">Start-Passwort aktiv</span>'+
+          '<button class="btn-secondary btn-small" onclick="pwStatusSetzen(\''+eKey+'\', false)">Als individuell markieren</button>';
+      } else {
+        pwZelle = '<span class="badge badge-genehmigt" style="margin-right:6px;">Individuell</span>'+
+          '<button class="btn-secondary btn-small" onclick="pwStatusSetzen(\''+eKey+'\', true)">Start-Passwort erzwingen</button>';
+      }
+    }
+
     tr.innerHTML =
       '<td>'+m.name+'</td>'+
       '<td>'+m.standort+'</td>'+
       '<td><input type="email" id="mailInput_'+idSafe+'" value="'+emailVal+'" placeholder="name@rudolf-hilgenroth.de" style="font-size:13px;"></td>'+
+      '<td style="white-space:nowrap;">'+pwZelle+'</td>'+
       '<td>'+
         '<button class="btn-primary btn-small" onclick="mitarbeiterEmailSpeichern(\''+idSafe+'\',\''+nameEsc+'\',\''+standortEsc+'\','+keyArg+')">E-Mail speichern</button> '+
         loeschBtn+
       '</td>';
     body.appendChild(tr);
   });
+}
+async function pwStatusSetzen(eKey, mussAendern){
+  try{
+    await db.ref('passwortAendernErforderlich/'+eKey).set(mussAendern);
+  }catch(err){
+    alert('Fehler: '+err.message);
+  }
 }
 async function mitarbeiterHinzufuegen(){
   const name = document.getElementById('neuerMaName').value.trim();
@@ -1648,10 +1735,20 @@ async function mitarbeiterHinzufuegen(){
     const eintrag = {name, standort};
     if(email) eintrag.email = email;
     await db.ref('mitarbeiterListe').push(eintrag);
+    if(email){
+      await setzeStartPasswortFlagFallsNeu(email);
+    }
     document.getElementById('neuerMaName').value = '';
     document.getElementById('neuerMaEmail').value = '';
   }catch(err){
     alert('Fehler: '+err.message);
+  }
+}
+async function setzeStartPasswortFlagFallsNeu(email){
+  const eKey = emailKey(email);
+  const bestehend = await db.ref('passwortAendernErforderlich/'+eKey).get();
+  if(!bestehend.exists()){
+    await db.ref('passwortAendernErforderlich/'+eKey).set(true);
   }
 }
 async function mitarbeiterEmailSpeichern(idSafe, name, standort, key){
@@ -1674,6 +1771,7 @@ async function mitarbeiterEmailSpeichern(idSafe, name, standort, key){
     if(!effKey){ alert('Konnte Mitarbeiter-Eintrag nicht finden.'); return; }
     if(email){
       await db.ref('mitarbeiterListe/'+effKey+'/email').set(email);
+      await setzeStartPasswortFlagFallsNeu(email);
     } else {
       await db.ref('mitarbeiterListe/'+effKey+'/email').remove();
     }
