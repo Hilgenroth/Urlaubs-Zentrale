@@ -387,7 +387,7 @@
         <h2><span class="title-txt">Neuen <span class="accent">Urlaubsantrag</span> stellen</span></h2>
         <div id="antragMitarbeiterWrapper" class="hidden">
           <label>Für Mitarbeiter</label>
-          <select id="antragMitarbeiterSelect"></select>
+          <select id="antragMitarbeiterSelect" onchange="updateTagePreview()"></select>
           <div class="note">Als Admin kannst du hier den Antrag für einen anderen Mitarbeiter stellen.</div>
         </div>
         <div class="row">
@@ -559,7 +559,7 @@
           <div class="note" style="margin-bottom:10px;">Wenn du hier die E-Mail-Adresse eines Mitarbeiters einträgst, wird er beim Login automatisch erkannt und muss seinen Namen nicht mehr auswählen.</div>
           <div class="table-scroll">
           <table>
-            <thead><tr><th>Name</th><th>Standort</th><th>E-Mail (Auto-Login)</th><th>Passwort</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Standort</th><th>E-Mail (Auto-Login)</th><th>Passwort</th><th>Arbeitstage</th><th></th></tr></thead>
             <tbody id="einstellungenMitarbeiterBody"></tbody>
           </table>
           </div>
@@ -691,6 +691,18 @@ const STAMMDATEN_FALLBACK_2026 = {
 
 let MITARBEITER = MITARBEITER_FALLBACK.slice();
 
+// Arbeitstage-Fallback fuer Mitarbeiter mit reduzierter Wochenarbeitszeit.
+// Format: JS-Wochentag-Nummern (1=Montag ... 5=Freitag). Ohne Eintrag = Mo-Fr (Standard).
+const ARBEITSTAGE_FALLBACK = {
+  "Daniela Miederhoff": [2,3,4] // Dienstag - Donnerstag
+};
+function getArbeitstage(name){
+  const m = MITARBEITER.find(x=>x.name===name);
+  if(m && Array.isArray(m.arbeitstage) && m.arbeitstage.length) return m.arbeitstage;
+  if(ARBEITSTAGE_FALLBACK[name]) return ARBEITSTAGE_FALLBACK[name];
+  return [1,2,3,4,5];
+}
+
 /* =========================================================================
    ROLLEN-FALLBACK
    Falls in Firebase unter "berechtigungen" fuer eine E-Mail noch nichts
@@ -770,15 +782,16 @@ function istFeiertag(d){
   return getFeiertage(d.getFullYear()).has(toKey(d));
 }
 
-function berechneUrlaubstage(startStr, endeStr, halbStart, halbEnde){
+function berechneUrlaubstage(startStr, endeStr, halbStart, halbEnde, arbeitstage){
   if(!startStr || !endeStr) return 0;
+  arbeitstage = arbeitstage || [1,2,3,4,5];
   const start = new Date(startStr+"T00:00:00");
   const ende = new Date(endeStr+"T00:00:00");
   if(ende < start) return 0;
   let tage = 0;
   let cur = new Date(start);
   while(cur <= ende){
-    if(!istFeiertagOderWochenende(cur)){
+    if(!istFeiertagOderWochenende(cur) && arbeitstage.includes(cur.getDay())){
       let wert = 1;
       const istStart = toKey(cur) === toKey(start);
       const istEnde = toKey(cur) === toKey(ende);
@@ -1080,12 +1093,25 @@ function switchTab(name){
 /* =========================================================================
    ANTRAG STELLEN
    ========================================================================= */
+function ermittleZielMitarbeiter(){
+  const kannFuerAndere = !!(berechtigung.fuerAndereEintragen || berechtigung.superadmin);
+  if(kannFuerAndere){
+    const sel = document.getElementById('antragMitarbeiterSelect');
+    if(sel && sel.value){
+      return {name: sel.value, standort: sel.selectedOptions[0].dataset.standort || ''};
+    }
+  }
+  return currentProfile ? {name: currentProfile.name, standort: currentProfile.standort} : null;
+}
+
 function updateTagePreview(){
   const start = document.getElementById('antragStart').value;
   const ende = document.getElementById('antragEnde').value;
   const halbStart = document.getElementById('halbTagStart').checked;
   const halbEnde = document.getElementById('halbTagEnde').checked;
-  const tage = berechneUrlaubstage(start, ende, halbStart, halbEnde);
+  const ziel = ermittleZielMitarbeiter();
+  const arbeitstage = getArbeitstage(ziel ? ziel.name : null);
+  const tage = berechneUrlaubstage(start, ende, halbStart, halbEnde, arbeitstage);
   document.getElementById('tagePreviewVal').textContent = tage.toString().replace('.', ',');
 }
 
@@ -1105,24 +1131,19 @@ async function submitAntrag(){
     zeigeFehler('antragError','Das Enddatum liegt vor dem Startdatum.');
     return;
   }
-  const tage = berechneUrlaubstage(start, ende, halbStart, halbEnde);
-  if(tage <= 0){
-    zeigeFehler('antragError','Der gewählte Zeitraum enthält keine Werktage (nur Wochenende/Feiertage).');
-    return;
-  }
 
   const kannFuerAndere = !!(berechtigung.fuerAndereEintragen || berechtigung.superadmin);
-  let zielName = currentProfile ? currentProfile.name : null;
-  let zielStandort = currentProfile ? currentProfile.standort : null;
-  if(kannFuerAndere){
-    const sel = document.getElementById('antragMitarbeiterSelect');
-    if(sel && sel.value){
-      zielName = sel.value;
-      zielStandort = sel.selectedOptions[0].dataset.standort || '';
-    }
-  }
-  if(!zielName){
+  const ziel = ermittleZielMitarbeiter();
+  if(!ziel || !ziel.name){
     zeigeFehler('antragError','Kein Mitarbeiter ausgewählt.');
+    return;
+  }
+  const zielName = ziel.name;
+  const zielStandort = ziel.standort;
+
+  const tage = berechneUrlaubstage(start, ende, halbStart, halbEnde, getArbeitstage(zielName));
+  if(tage <= 0){
+    zeigeFehler('antragError','Der gewählte Zeitraum enthält keine Werktage für diesen Mitarbeiter.');
     return;
   }
 
@@ -1298,11 +1319,13 @@ async function entscheiden(id, status){
 
 /* ---- ADMIN: BEARBEITEN & LOESCHEN ---- */
 let editingAntragId = null;
+let editingAntragName = null;
 
 function openEditModal(id){
   const a = alleAntraegeCache.find(x=>x.id===id);
   if(!a) return;
   editingAntragId = id;
+  editingAntragName = a.name;
   document.getElementById('editSubtitle').textContent = a.name + ' (' + a.standort + ')';
   document.getElementById('editStart').value = a.start || '';
   document.getElementById('editEnde').value = a.ende || '';
@@ -1317,13 +1340,14 @@ function openEditModal(id){
 function closeEditModal(){
   hide('editOverlay');
   editingAntragId = null;
+  editingAntragName = null;
 }
 function updateEditTagePreview(){
   const start = document.getElementById('editStart').value;
   const ende = document.getElementById('editEnde').value;
   const halbStart = document.getElementById('editHalbTagStart').checked;
   const halbEnde = document.getElementById('editHalbTagEnde').checked;
-  const tage = berechneUrlaubstage(start, ende, halbStart, halbEnde);
+  const tage = berechneUrlaubstage(start, ende, halbStart, halbEnde, getArbeitstage(editingAntragName));
   document.getElementById('editTagePreviewVal').textContent = tage.toString().replace('.', ',');
 }
 async function submitEdit(){
@@ -1337,8 +1361,8 @@ async function submitEdit(){
   const bemerkung = document.getElementById('editBemerkung').value.trim();
   if(!start || !ende){ zeigeFehler('editError','Bitte Start- und Enddatum angeben.'); return; }
   if(new Date(ende) < new Date(start)){ zeigeFehler('editError','Enddatum liegt vor dem Startdatum.'); return; }
-  const tage = berechneUrlaubstage(start, ende, halbStart, halbEnde);
-  if(tage <= 0){ zeigeFehler('editError','Der Zeitraum enthält keine Werktage.'); return; }
+  const tage = berechneUrlaubstage(start, ende, halbStart, halbEnde, getArbeitstage(editingAntragName));
+  if(tage <= 0){ zeigeFehler('editError','Der Zeitraum enthält keine Werktage für diesen Mitarbeiter.'); return; }
   try{
     await db.ref('antraege/'+editingAntragId).update({
       start, ende,
@@ -1391,11 +1415,12 @@ function exportGenehmigenExcel(){
 // damit Anträge über Monatsgrenzen hinweg korrekt aufgeteilt werden können.
 function tageDetailProAntrag(a){
   const result = [];
+  const arbeitstage = getArbeitstage(a.name);
   const start = new Date(a.start+"T00:00:00");
   const ende = new Date(a.ende+"T00:00:00");
   let cur = new Date(start);
   while(cur <= ende){
-    if(!istFeiertagOderWochenende(cur)){
+    if(!istFeiertagOderWochenende(cur) && arbeitstage.includes(cur.getDay())){
       let wert = 1;
       const istStart = toKey(cur) === toKey(start);
       const istEnde = toKey(cur) === toKey(ende);
@@ -1676,6 +1701,7 @@ function renderMitarbeiterEditor(){
   const body = document.getElementById('einstellungenMitarbeiterBody');
   if(!body) return;
   body.innerHTML = '';
+  const wochentage = [{n:1,l:'Mo'},{n:2,l:'Di'},{n:3,l:'Mi'},{n:4,l:'Do'},{n:5,l:'Fr'}];
   MITARBEITER.forEach((m,idx)=>{
     const tr = document.createElement('tr');
     const idSafe = 'ma_'+idx;
@@ -1698,11 +1724,22 @@ function renderMitarbeiterEditor(){
       }
     }
 
+    const aktuelleArbeitstage = getArbeitstage(m.name);
+    let arbeitstageZelle = '<div style="display:flex; gap:8px; flex-wrap:wrap;">';
+    wochentage.forEach(wt=>{
+      const checked = aktuelleArbeitstage.includes(wt.n) ? 'checked' : '';
+      arbeitstageZelle += '<label style="display:flex; align-items:center; gap:3px; font-weight:600; text-transform:none; font-size:12.5px; margin:0;">'+
+        '<input type="checkbox" id="arbtag_'+idSafe+'_'+wt.n+'" '+checked+' style="width:auto;">'+wt.l+'</label>';
+    });
+    arbeitstageZelle += '</div>'+
+      '<button class="btn-secondary btn-small" style="margin-top:6px;" onclick="arbeitstageSpeichern(\''+idSafe+'\',\''+nameEsc+'\',\''+standortEsc+'\','+keyArg+')">Speichern</button>';
+
     tr.innerHTML =
       '<td>'+m.name+'</td>'+
       '<td>'+m.standort+'</td>'+
       '<td><input type="email" id="mailInput_'+idSafe+'" value="'+emailVal+'" placeholder="name@rudolf-hilgenroth.de" style="font-size:13px;"></td>'+
       '<td style="white-space:nowrap;">'+pwZelle+'</td>'+
+      '<td style="min-width:170px;">'+arbeitstageZelle+'</td>'+
       '<td>'+
         '<button class="btn-primary btn-small" onclick="mitarbeiterEmailSpeichern(\''+idSafe+'\',\''+nameEsc+'\',\''+standortEsc+'\','+keyArg+')">E-Mail speichern</button> '+
         loeschBtn+
@@ -1751,23 +1788,41 @@ async function setzeStartPasswortFlagFallsNeu(email){
     await db.ref('passwortAendernErforderlich/'+eKey).set(true);
   }
 }
+async function findeOderErstelleMitarbeiterKey(name, standort, key){
+  let effKey = key;
+  if(!effKey){
+    const snap = await db.ref('mitarbeiterListe').get();
+    if(!snap.exists()){
+      const updates = {};
+      MITARBEITER_FALLBACK.forEach(m=>{
+        const k = db.ref('mitarbeiterListe').push().key;
+        updates[k] = m;
+        if(m.name===name && m.standort===standort) effKey = k;
+      });
+      await db.ref('mitarbeiterListe').set(updates);
+    }
+  }
+  return effKey;
+}
+async function arbeitstageSpeichern(idSafe, name, standort, key){
+  const wochentage = [1,2,3,4,5];
+  const ausgewaehlt = wochentage.filter(n => document.getElementById('arbtag_'+idSafe+'_'+n).checked);
+  if(ausgewaehlt.length === 0){
+    alert('Bitte mindestens einen Arbeitstag auswählen.');
+    return;
+  }
+  try{
+    const effKey = await findeOderErstelleMitarbeiterKey(name, standort, key);
+    if(!effKey){ alert('Konnte Mitarbeiter-Eintrag nicht finden.'); return; }
+    await db.ref('mitarbeiterListe/'+effKey+'/arbeitstage').set(ausgewaehlt);
+  }catch(err){
+    alert('Fehler: '+err.message);
+  }
+}
 async function mitarbeiterEmailSpeichern(idSafe, name, standort, key){
   const email = document.getElementById('mailInput_'+idSafe).value.trim().toLowerCase();
   try{
-    let effKey = key;
-    // Falls noch keine Firebase-Liste existiert: Fallback initial hochladen und Key des passenden Eintrags merken
-    if(!effKey){
-      const snap = await db.ref('mitarbeiterListe').get();
-      if(!snap.exists()){
-        const updates = {};
-        MITARBEITER_FALLBACK.forEach(m=>{
-          const k = db.ref('mitarbeiterListe').push().key;
-          updates[k] = m;
-          if(m.name===name && m.standort===standort) effKey = k;
-        });
-        await db.ref('mitarbeiterListe').set(updates);
-      }
-    }
+    const effKey = await findeOderErstelleMitarbeiterKey(name, standort, key);
     if(!effKey){ alert('Konnte Mitarbeiter-Eintrag nicht finden.'); return; }
     if(email){
       await db.ref('mitarbeiterListe/'+effKey+'/email').set(email);
