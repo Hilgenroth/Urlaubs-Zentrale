@@ -614,9 +614,11 @@
         <div class="note" style="margin-bottom:12px;">
           Trage täglich deinen Status ein. Urlaub wird automatisch vorausgefüllt. Leere Felder = noch nicht eingetragen.
         </div>
-        <div id="anwMehrfachToolbar" style="display:none; margin-bottom:10px; padding:10px 14px; background:#fff8e1; border:1.5px solid #f0c040; border-radius:8px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div id="anwMehrfachToolbar" style="display:none; margin-bottom:10px; padding:10px 14px; background:#fff8e1; border:1.5px solid #f0c040; border-radius:8px; align-items:center; gap:10px; flex-wrap:wrap;">
           <span style="font-weight:700; font-size:13px;" id="anwAuswahlAnzahl">0 ausgewählt</span>
-          <span style="color:var(--gray-400); font-size:12px;">Status setzen für alle markierten:</span>
+          <span style="color:var(--gray-700); font-size:12px; font-weight:600;">für Tag:</span>
+          <select id="anwMehrfachTag" style="width:auto; font-size:13px; padding:4px 8px;"></select>
+          <span style="color:var(--gray-400); font-size:12px;">→ Status:</span>
           <div style="display:flex; gap:6px; flex-wrap:wrap;" id="anwMehrfachButtons"></div>
           <button class="btn-secondary btn-small" onclick="anwAuswahlAufheben()">✕ Auswahl aufheben</button>
         </div>
@@ -2772,6 +2774,18 @@ async function anwMailSenden(){
   }
 }
 
+
+// Prueft ob ein Tag durch einen genehmigten Urlaubsantrag fest belegt ist
+function istFesterUrlaub(maName, tag, monat, jahr){
+  const d = new Date(jahr, monat, tag);
+  if(d.getDay()===0 || d.getDay()===6 || istFeiertag(d)) return false;
+  const key = toKey(d);
+  return alleAntraegeCache.some(a=>
+    a.name===maName && a.status==='genehmigt'
+    && key>=a.start && key<=a.ende
+  );
+}
+
 function befuelleAnwDropdowns(){
   const mSel = document.getElementById('anwMonat');
   const jSel = document.getElementById('anwJahr');
@@ -2889,16 +2903,21 @@ function renderAnwesenheit(){
         const we = d.getDay()===0||d.getDay()===6;
         const ft = istFeiertag(d);
         const isToday = d.toDateString()===heute.toDateString();
+        const festerUrlaub = istFesterUrlaub(m.name, t, monat, jahr);
         let wert = maGespeichert[t] || '';
-        if(!wert) wert = getAutoWert(m.name, t, monat, jahr);
-        const nichtEditierbar = we || ft;
+        if(festerUrlaub) wert = getAutoWert(m.name, t, monat, jahr);  // Urlaub hat Vorrang, nicht ueberschreibbar
+        else if(!wert) wert = getAutoWert(m.name, t, monat, jahr);
+        const nichtEditierbar = we || ft || festerUrlaub;
         const bg   = nichtEditierbar ? '#F2F2F2' : (ANW_FARBEN[wert]||'#FAFAFA');
         const txtC = nichtEditierbar ? '#CCCCCC' : (ANW_FARBEN_TEXT[wert]||'#CCCCCC');
         const outline = isToday ? 'box-shadow:inset 0 0 0 2px var(--red);' : '';
         if(wert==='U') sumU++;
         else if(wert==='K'||wert==='KK'||wert==='SOU'||wert==='EZ') sumAbw++;
         if(nichtEditierbar){
-          html += `<td style="text-align:center; background:${bg}; ${outline} border-radius:3px; height:24px; padding:0;"></td>`;
+          const anzeige = (we||ft) ? '' : wert;
+          const titel = festerUrlaub ? `${m.name} – ${t}.${monat+1}.${jahr} · Urlaub (fest, aus Antrag)` : '';
+          html += `<td title="${titel}" style="text-align:center; background:${bg}; ${outline} border-radius:3px; height:24px; padding:0;
+            font-size:10px; font-weight:700; color:${txtC}; font-family:Consolas,monospace; cursor:not-allowed;">${anzeige}</td>`;
         } else {
           html += `<td style="text-align:center; background:${bg}; ${outline} border-radius:3px; height:24px; padding:0; cursor:pointer;"
             title="${m.name} – ${t}.${monat+1}.${jahr}"
@@ -2956,11 +2975,36 @@ function anwToolbarAktualisieren(){
   const toolbar = document.getElementById('anwMehrfachToolbar');
   const anzEl   = document.getElementById('anwAuswahlAnzahl');
   const btnArea  = document.getElementById('anwMehrfachButtons');
+  const tagSel   = document.getElementById('anwMehrfachTag');
   if(!toolbar) return;
   const n = window._anwAuswahl.size;
   if(n===0){ toolbar.style.display='none'; return; }
   toolbar.style.display='flex';
   anzEl.textContent = n+' ausgewählt';
+
+  // Tag-Dropdown befuellen (nur Werktage des gewaehlten Monats)
+  const monat = parseInt(document.getElementById('anwMonat').value);
+  const jahr  = parseInt(document.getElementById('anwJahr').value);
+  const tageImMonat = new Date(jahr, monat+1, 0).getDate();
+  const WT = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+  const heute = new Date();
+  const vorherigerWert = tagSel.value;
+  tagSel.innerHTML = '';
+  for(let t=1; t<=tageImMonat; t++){
+    const d = new Date(jahr, monat, t);
+    if(d.getDay()===0 || d.getDay()===6 || istFeiertag(d)) continue;
+    const o = document.createElement('option');
+    o.value = t;
+    o.textContent = t+'. ('+WT[d.getDay()]+')';
+    tagSel.appendChild(o);
+  }
+  // Vorherige Auswahl beibehalten, sonst heute vorwaehlen
+  if(vorherigerWert && tagSel.querySelector(`option[value="${vorherigerWert}"]`)){
+    tagSel.value = vorherigerWert;
+  } else if(heute.getFullYear()===jahr && heute.getMonth()===monat){
+    const heuteOpt = tagSel.querySelector(`option[value="${heute.getDate()}"]`);
+    if(heuteOpt) tagSel.value = heute.getDate();
+  }
   // Buttons neu aufbauen
   btnArea.innerHTML='';
   const optionen = ['X','U','K','KK','SOU','EZ','F',''];
@@ -2978,16 +3022,30 @@ function anwToolbarAktualisieren(){
 function anwMehrfachSetzen(wert){
   const monat = parseInt(document.getElementById('anwMonat').value);
   const jahr  = parseInt(document.getElementById('anwJahr').value);
-  const tageImMonat = new Date(jahr, monat+1, 0).getDate();
+  const tag   = parseInt(document.getElementById('anwMehrfachTag').value);
+  if(isNaN(tag)){ alert('Bitte einen Tag auswählen.'); return; }
+
   const updates = {};
+  let uebersprungen = 0;
   window._anwAuswahl.forEach(maKey=>{
-    for(let t=1; t<=tageImMonat; t++){
-      const d = new Date(jahr, monat, t);
-      if(d.getDay()===0||d.getDay()===6||istFeiertag(d)) continue;
-      updates['anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+t] = wert||null;
+    // Namen zum maKey finden, um Urlaub zu pruefen
+    const ma = MITARBEITER.find(m=>m.name.replace(/[.#$[\]\/]/g,'_')===maKey);
+    if(ma && istFesterUrlaub(ma.name, tag, monat, jahr)){
+      uebersprungen++;
+      return;  // Urlaub nicht ueberschreiben
     }
+    updates['anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+tag] = wert||null;
   });
+
+  if(Object.keys(updates).length===0){
+    alert('Alle ausgewählten Mitarbeiter haben an diesem Tag Urlaub – nichts geändert.');
+    return;
+  }
+
   db.ref('/').update(updates).then(()=>{
+    if(uebersprungen>0){
+      alert(uebersprungen+' Mitarbeiter übersprungen (Urlaub kann nicht überschrieben werden).');
+    }
     anwAuswahlAufheben();
     renderAnwesenheit();
   });
@@ -3016,11 +3074,17 @@ function anwTagAlleSetzen(jahr, monat, tag){
     btn.onclick = ()=>{
       const sortiert = sortiereAnwesenheit(MITARBEITER);
       const updates = {};
+      let uebersprungen = 0;
       sortiert.forEach(m=>{
+        if(istFesterUrlaub(m.name, tag, monat, jahr)){ uebersprungen++; return; }
         const maKey = m.name.replace(/[.#$[\]\/]/g,'_');
         updates['anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+tag] = v||null;
       });
-      db.ref('/').update(updates).then(()=>{ popup.remove(); renderAnwesenheit(); });
+      db.ref('/').update(updates).then(()=>{
+        popup.remove();
+        renderAnwesenheit();
+        if(uebersprungen>0) setTimeout(()=>alert(uebersprungen+' Mitarbeiter übersprungen (Urlaub bleibt bestehen).'), 200);
+      });
     };
     btnWrap.appendChild(btn);
   });
