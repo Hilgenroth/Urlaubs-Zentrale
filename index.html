@@ -1333,7 +1333,9 @@ function ladeMeineAntraege(){
     meineAntraegeCache = [];
     snap.forEach(child=>{
       const a = {id:child.key, ...child.val()};
-      if(a.uid === currentUser.uid || (currentProfile && a.name === currentProfile.name)){
+      // Meine Anträge = alle Anträge, die auf meinen Namen laufen
+      // (egal wer sie erstellt hat, wichtig wenn Admin/Superadmin für sich selbst welche einträgt).
+      if(currentProfile && a.name === currentProfile.name){
         meineAntraegeCache.push(a);
       }
     });
@@ -1652,6 +1654,13 @@ function berechneMonatsverteilung(name, jahr){
     });
   return monate;
 }
+function nachnameAus(name){
+  const teile = (name||'').trim().split(/\s+/);
+  return teile.length ? teile[teile.length-1] : '';
+}
+function sortiereNachNachname(liste){
+  return liste.slice().sort((a,b)=> nachnameAus(a.name).localeCompare(nachnameAus(b.name),'de',{sensitivity:'base'}));
+}
 function renderMonatsuebersicht(){
   const body = document.getElementById('monatBody');
   if(!body) return;
@@ -1659,7 +1668,7 @@ function renderMonatsuebersicht(){
   if(!jahrSel.value) return;
   const jahr = jahrSel.value;
   body.innerHTML = '';
-  MITARBEITER.forEach(m=>{
+  sortiereNachNachname(MITARBEITER).forEach(m=>{
     const monate = berechneMonatsverteilung(m.name, jahr);
     const gesamt = monate.reduce((s,v)=>s+v,0);
     const tr = document.createElement('tr');
@@ -1673,7 +1682,7 @@ function renderMonatsuebersicht(){
 function exportMonatsuebersichtExcel(){
   const jahr = document.getElementById('monatJahr').value;
   const monatsNamen = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
-  const rows = MITARBEITER.map(m=>{
+  const rows = sortiereNachNachname(MITARBEITER).map(m=>{
     const monate = berechneMonatsverteilung(m.name, jahr);
     const row = {Mitarbeiter:m.name, Standort:m.standort};
     monatsNamen.forEach((mn,idx)=>{ row[mn] = monate[idx]; });
