@@ -2786,11 +2786,11 @@ async function anwMailSenden(){
 function istFesterUrlaub(maName, tag, monat, jahr){
   const d = new Date(jahr, monat, tag);
   if(d.getDay()===0 || d.getDay()===6 || istFeiertag(d)) return false;
-  const key = toKey(d);
-  return alleAntraegeCache.some(a=>
-    a.name===maName && a.status==='genehmigt'
-    && key>=a.start && key<=a.ende
-  );
+  // Nur sperren wenn getAutoWert auch wirklich einen anzeigbaren Wert liefert (U oder SOU).
+  // Verhindert leere, gesperrte Zellen (z.B. bei Betriebsurlaub oder Nicht-Arbeitstagen
+  // von Teilzeitkraeften wie Miederhoff Di-Do oder Husteden Mo-Do).
+  const auto = getAutoWert(maName, tag, monat, jahr);
+  return auto === 'U' || auto === 'SOU';
 }
 
 
@@ -2895,6 +2895,9 @@ function getAutoWert(maName, tag, monat, jahr){
   const key = toKey(d);
   if(we) return 'WE';
   if(ft) return 'FT';
+  // Nicht-Arbeitstage von Teilzeitkraeften (z.B. Miederhoff Di-Do, Husteden Mo-Do)
+  const arbeitstage = getArbeitstage(maName);
+  if(!arbeitstage.includes(d.getDay())) return '';
   if(bu) return '';  // Betriebsurlaub wird in Anwesenheitsliste nicht angezeigt
   const urlAntrag = alleAntraegeCache.find(a=>
     a.name===maName && a.status==='genehmigt' && (a.art||'urlaub')==='urlaub'
