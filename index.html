@@ -654,18 +654,26 @@
         <div class="filter-row">
           <label style="margin:0; text-transform:none; font-weight:600;">Jahr:</label>
           <select id="monatJahr" onchange="renderMonatsuebersicht()"></select>
+          <label style="margin:0; text-transform:none; font-weight:600;">Monat:</label>
+          <select id="monatMonatFilter" onchange="renderMonatsuebersicht()">
+            <option value="alle">Alle Monate</option>
+            <option value="0">Januar</option>
+            <option value="1">Februar</option>
+            <option value="2">März</option>
+            <option value="3">April</option>
+            <option value="4">Mai</option>
+            <option value="5">Juni</option>
+            <option value="6">Juli</option>
+            <option value="7">August</option>
+            <option value="8">September</option>
+            <option value="9">Oktober</option>
+            <option value="10">November</option>
+            <option value="11">Dezember</option>
+          </select>
         </div>
         <div class="table-scroll">
         <table>
-          <thead>
-            <tr>
-              <th>Mitarbeiter</th><th>Standort</th>
-              <th class="mono">Jan</th><th class="mono">Feb</th><th class="mono">Mär</th><th class="mono">Apr</th>
-              <th class="mono">Mai</th><th class="mono">Jun</th><th class="mono">Jul</th><th class="mono">Aug</th>
-              <th class="mono">Sep</th><th class="mono">Okt</th><th class="mono">Nov</th><th class="mono">Dez</th>
-              <th class="mono">Genommen gesamt</th>
-            </tr>
-          </thead>
+          <thead id="monatThead"></thead>
           <tbody id="monatBody"></tbody>
         </table>
         </div>
@@ -1807,36 +1815,62 @@ function sortiereNachNachname(liste){
 }
 function renderMonatsuebersicht(){
   const body = document.getElementById('monatBody');
-  if(!body) return;
+  const thead = document.getElementById('monatThead');
+  if(!body || !thead) return;
   const jahrSel = document.getElementById('monatJahr');
   if(!jahrSel.value) return;
   const jahr = jahrSel.value;
+  const monatFilter = document.getElementById('monatMonatFilter').value;
+  const alleNamen = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  const sichtbareMonate = monatFilter==='alle' ? [0,1,2,3,4,5,6,7,8,9,10,11] : [parseInt(monatFilter)];
+
+  // Header: bei Einzelmonat nur eine Datenspalte + Gesamt-im-Jahr-Spalte
+  const einzelmonat = monatFilter !== 'alle';
+  let headerHtml = '<tr><th>Mitarbeiter</th><th>Standort</th>';
+  sichtbareMonate.forEach(idx=>{ headerHtml += '<th class="mono">'+alleNamen[idx]+'</th>'; });
+  if(einzelmonat) headerHtml += '<th class="mono" style="color:var(--gray-400);">Gesamt im Jahr</th>';
+  else headerHtml += '<th class="mono">Gesamt</th>';
+  headerHtml += '</tr>';
+  thead.innerHTML = headerHtml;
+
   body.innerHTML = '';
   sortiereNachNachname(MITARBEITER).forEach(m=>{
     const monate = berechneMonatsverteilung(m.name, jahr);
-    const gesamt = monate.reduce((s,v)=>s+v,0);
+    const summeGewaehlterMonate = sichtbareMonate.reduce((s,idx)=>s+monate[idx],0);
+    const gesamtJahr = monate.reduce((s,v)=>s+v,0);
     const tr = document.createElement('tr');
     let zellen = '<td>'+m.name+'</td><td>'+m.standort+'</td>';
-    monate.forEach(v=>{ zellen += '<td class="mono">'+String(v).replace('.',',')+'</td>'; });
-    zellen += '<td class="mono" style="font-weight:700;">'+String(gesamt).replace('.',',')+'</td>';
+    sichtbareMonate.forEach(idx=>{
+      const v = monate[idx];
+      const hervor = v>0 ? ' style="color:var(--ok); font-weight:700;"' : '';
+      zellen += '<td class="mono"'+hervor+'>'+String(v).replace('.',',')+'</td>';
+    });
+    if(einzelmonat){
+      zellen += '<td class="mono" style="font-weight:700; color:var(--gray-400);">'+String(gesamtJahr).replace('.',',')+'</td>';
+    } else {
+      zellen += '<td class="mono" style="font-weight:700;">'+String(summeGewaehlterMonate).replace('.',',')+'</td>';
+    }
     tr.innerHTML = zellen;
     body.appendChild(tr);
   });
 }
 function exportMonatsuebersichtExcel(){
   const jahr = document.getElementById('monatJahr').value;
-  const monatsNamen = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  const monatFilter = document.getElementById('monatMonatFilter').value;
+  const alleNamen = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  const sichtbareMonate = monatFilter==='alle' ? [0,1,2,3,4,5,6,7,8,9,10,11] : [parseInt(monatFilter)];
   const rows = sortiereNachNachname(MITARBEITER).map(m=>{
     const monate = berechneMonatsverteilung(m.name, jahr);
     const row = {Mitarbeiter:m.name, Standort:m.standort};
-    monatsNamen.forEach((mn,idx)=>{ row[mn] = monate[idx]; });
-    row['Genommen gesamt'] = monate.reduce((s,v)=>s+v,0);
+    sichtbareMonate.forEach(idx=>{ row[alleNamen[idx]] = monate[idx]; });
+    row['Gesamt'] = sichtbareMonate.reduce((s,idx)=>s+monate[idx],0);
     return row;
   });
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Monatsübersicht '+jahr);
-  XLSX.writeFile(wb, 'Monatsuebersicht_'+jahr+'_Export_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  const blattName = monatFilter==='alle' ? 'Monatsübersicht '+jahr : alleNamen[parseInt(monatFilter)]+' '+jahr;
+  XLSX.utils.book_append_sheet(wb, ws, blattName);
+  XLSX.writeFile(wb, 'Monatsuebersicht_'+blattName.replace(' ','_')+'_Export_'+new Date().toISOString().slice(0,10)+'.xlsx');
 }
 
 /* =========================================================================
