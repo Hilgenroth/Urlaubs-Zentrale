@@ -175,6 +175,43 @@
   .konto-details .label{font-size:11px; text-transform:uppercase; letter-spacing:0.4px; color:var(--gray-400); font-weight:700;}
   .konto-details .wert{font-family:Consolas,Menlo,Monaco,monospace; font-size:18px; font-weight:700; color:var(--black);}
 
+  .jahres-grid{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:16px;
+    margin-top:8px;
+  }
+  .mini-monat{
+    background:var(--white); border:1px solid var(--gray-200); border-radius:8px; padding:14px;
+    box-shadow:var(--shadow);
+  }
+  .mini-monat h4{
+    margin:0 0 10px; font-size:14px; font-weight:700; text-align:center;
+    color:var(--black); text-transform:uppercase; letter-spacing:0.5px;
+  }
+  .mini-monat table{border-collapse:separate; border-spacing:2px; width:100%; table-layout:fixed;}
+  .mini-monat th{
+    font-size:10px; text-transform:uppercase; color:var(--gray-400); font-weight:700;
+    text-align:center; padding:2px 0; letter-spacing:0.3px; border:none;
+  }
+  .mini-monat th.we-h{color:var(--gray-400);}
+  .mini-monat td{
+    text-align:center; padding:0; height:22px; font-size:11px;
+    font-family:Consolas,Menlo,Monaco,monospace; color:var(--gray-700);
+    border-radius:3px; background:var(--white); border:1px solid var(--gray-200);
+  }
+  .mini-monat td.leer{background:transparent; border-color:transparent;}
+  .mini-monat td.we{background:#f7f7f7; color:var(--gray-400); border-color:#eee;}
+  .mini-monat td.feiertag{background:#ececec; border-color:#ddd;}
+  .mini-monat td.today{box-shadow:inset 0 0 0 2px var(--red);}
+  .mini-monat td.genehmigt{background:#2d8b4f; color:#fff; font-weight:700; border-color:#256f3f;}
+  .mini-monat td.offen{background:#fdf3d9; color:var(--warn); font-weight:700; border:1px dashed var(--warn);}
+  .mini-monat td.sou{background:#4338ca; color:#fff; font-weight:700; border-color:#312991;}
+  .mini-monat td.betriebsurlaub{background:#2b6cb0; color:#fff; font-weight:700; border-color:#1e4e82;}
+  .mini-monat-summary{
+    margin-top:8px; padding-top:8px; border-top:1px solid var(--gray-200);
+    display:flex; justify-content:space-between; font-size:11.5px; color:var(--gray-700);
+  }
+  .mini-monat-summary strong{font-family:Consolas,Menlo,Monaco,monospace; color:var(--black);}
+
   table{width:100%; border-collapse:collapse; font-size:14px;}
   th{
     text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:0.4px;
@@ -462,6 +499,7 @@
     <div class="tabs" id="tabBar">
       <div class="tab active" id="antragTabBtn" data-tab="antrag" onclick="switchTab('antrag')">Neuer Antrag</div>
       <div class="tab" id="meineTabBtn" data-tab="meine" onclick="switchTab('meine')">Meine Anträge</div>
+      <div class="tab" id="meinKalenderTabBtn" data-tab="meinkalender" onclick="switchTab('meinkalender')">Mein Kalender</div>
       <div class="tab hidden" id="genehmigenTab" data-tab="genehmigen" onclick="switchTab('genehmigen')">Genehmigen</div>
       <div class="tab hidden" id="korrekturenTab" data-tab="korrekturen" onclick="switchTab('korrekturen')">Korrekturen <span id="korrekturenBadge" class="badge badge-offen hidden" style="margin-left:4px;">0</span></div>
       <div class="tab hidden" id="monatTab" data-tab="monat" onclick="switchTab('monat')">Monatsübersicht</div>
@@ -532,6 +570,25 @@
         </table>
         </div>
         <div id="meineAntraegeEmpty" class="empty-state hidden">Noch keine Anträge gestellt.</div>
+      </div>
+    </div>
+
+    <!-- TAB: Mein Kalender -->
+    <div id="tab-meinkalender" class="tab-content hidden">
+      <div class="card">
+        <h2>
+          <span class="title-txt">Mein <span class="accent">Kalender</span></span>
+          <select id="meinKalenderJahr" onchange="renderMeinKalender()" style="width:auto;"></select>
+        </h2>
+        <div id="meinKalenderGrid" class="jahres-grid"></div>
+        <div class="legend">
+          <span><span class="box" style="background:#2d8b4f;"></span> Urlaub genehmigt</span>
+          <span><span class="box" style="background:#fdf3d9; border-color:var(--warn);"></span> Urlaub offen</span>
+          <span><span class="box" style="background:#4338ca;"></span> Sonderurlaub</span>
+          <span><span class="box" style="background:#2b6cb0;"></span> Betriebsurlaub</span>
+          <span><span class="box" style="background:#ececec;"></span> Feiertag</span>
+          <span><span class="box" style="border:2px solid var(--red); background:var(--white);"></span> Heute</span>
+        </div>
       </div>
     </div>
 
@@ -1051,6 +1108,7 @@ function zeigeApp(){
   const zeigeAntragTab = !nurUebersicht || kannFuerAndere;
   document.getElementById('antragTabBtn').classList.toggle('hidden', !zeigeAntragTab);
   document.getElementById('meineTabBtn').classList.toggle('hidden', nurUebersicht);
+  document.getElementById('meinKalenderTabBtn').classList.toggle('hidden', nurUebersicht);
   document.getElementById('genehmigenTab').classList.toggle('hidden', !effAdmin);
   document.getElementById('korrekturenTab').classList.toggle('hidden', !effAdmin);
   document.getElementById('monatTab').classList.toggle('hidden', !effAdmin);
@@ -1222,6 +1280,7 @@ function switchTab(name){
   document.querySelectorAll('.tab-content').forEach(c=>c.classList.add('hidden'));
   document.getElementById('tab-'+name).classList.remove('hidden');
   if(name==='kalender') renderKalender();
+  if(name==='meinkalender') renderMeinKalender();
   if(name==='resturlaub') renderResturlaub();
   if(name==='monat') renderMonatsuebersicht();
 }
@@ -1342,8 +1401,93 @@ function ladeMeineAntraege(){
     meineAntraegeCache.sort((a,b)=> (b.erstelltAm||0) - (a.erstelltAm||0));
     renderMeineAntraege();
     renderUrlaubKonto();
+    renderMeinKalender();
   });
 }
+function renderMeinKalender(){
+  const grid = document.getElementById('meinKalenderGrid');
+  if(!grid) return;
+  const sel = document.getElementById('meinKalenderJahr');
+  // Jahresauswahl befuellen wenn leer
+  if(sel && sel.options.length===0){
+    const jetzt = new Date().getFullYear();
+    [jetzt-1, jetzt, jetzt+1].forEach(j=>{
+      const o = document.createElement('option');
+      o.value = j; o.textContent = j;
+      if(j===jetzt) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+  const jahr = parseInt(sel.value) || new Date().getFullYear();
+  const monate = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  const wochentagKurz = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+  const heute = new Date();
+
+  grid.innerHTML = '';
+  for(let m=0; m<12; m++){
+    const box = document.createElement('div');
+    box.className = 'mini-monat';
+    let html = '<h4>'+monate[m]+'</h4><table><thead><tr>';
+    wochentagKurz.forEach((wt,idx)=>{
+      const cls = (idx>=5) ? 'we-h' : '';
+      html += '<th class="'+cls+'">'+wt+'</th>';
+    });
+    html += '</tr></thead><tbody>';
+
+    const ersterTag = new Date(jahr, m, 1);
+    const tageImMonat = new Date(jahr, m+1, 0).getDate();
+    // Wochentag von Montag=0 bis Sonntag=6
+    let startOffset = ersterTag.getDay() - 1;
+    if(startOffset < 0) startOffset = 6;
+
+    let tag = 1;
+    let genommen = 0;
+    for(let woche=0; woche<6; woche++){
+      html += '<tr>';
+      for(let wt=0; wt<7; wt++){
+        const zellIdx = woche*7 + wt;
+        if(zellIdx < startOffset || tag > tageImMonat){
+          html += '<td class="leer"></td>';
+        } else {
+          const d = new Date(jahr, m, tag);
+          const key = toKey(d);
+          const isToday = d.getFullYear()===heute.getFullYear() && d.getMonth()===heute.getMonth() && d.getDate()===heute.getDate();
+          let cls = '';
+          if(d.getDay()===0 || d.getDay()===6) cls = 'we';
+          if(istFeiertag(d)) cls = 'feiertag';
+          if(istBetriebsurlaub(d)) cls = 'betriebsurlaub';
+
+          const treffer = meineAntraegeCache.find(a => a.status!=='abgelehnt' && key>=a.start && key<=a.ende);
+          if(treffer){
+            const istSou = treffer.art==='sonderurlaub';
+            cls = treffer.status==='genehmigt' ? (istSou?'sou':'genehmigt') : 'offen';
+            if(treffer.status==='genehmigt' && !istSou){
+              // Fuer die Monatszaehlung: nur wenn nicht bereits als Wochenende/Feiertag gezählt
+              const arbeitstage = getArbeitstage(currentProfile.name);
+              if(!istFeiertagOderWochenende(d) && arbeitstage.includes(d.getDay())){
+                genommen += 1;
+                if((key===treffer.start && treffer.halbTagStart) || (key===treffer.ende && treffer.halbTagEnde)){
+                  genommen -= 0.5;
+                }
+              }
+            }
+          }
+          if(isToday) cls += ' today';
+          html += '<td class="'+cls+'" title="'+formatDatum(key)+(treffer?' · '+labelStatus(treffer.status):'')+'">'+tag+'</td>';
+          tag++;
+        }
+      }
+      html += '</tr>';
+      if(tag > tageImMonat) break;
+    }
+    html += '</tbody></table>';
+    const genFmt = String(genommen).replace('.',',');
+    html += '<div class="mini-monat-summary"><span>Urlaub genommen</span><strong>'+genFmt+' Tag'+(genommen===1?'':'e')+'</strong></div>';
+    box.innerHTML = html;
+    grid.appendChild(box);
+  }
+}
+
 function renderUrlaubKonto(){
   const box = document.getElementById('urlaubKonto');
   if(!box) return;
