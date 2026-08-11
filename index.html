@@ -141,6 +141,40 @@
   .badge-rolle{background:var(--gold-bg); color:var(--gold);}
   .badge-sou{background:#e0e7ff; color:#3730a3;}
 
+  .urlaub-konto{
+    background:linear-gradient(135deg, #ffffff 0%, #f8f8f8 100%);
+    border:1px solid var(--gray-200); border-radius:10px; padding:22px 26px;
+    margin-bottom:20px; box-shadow:var(--shadow);
+    border-left:5px solid var(--red);
+  }
+  .konto-header{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px;}
+  .konto-header h3{margin:0; font-size:14px; text-transform:uppercase; letter-spacing:0.5px; color:var(--gray-700); font-weight:800;}
+  .konto-header .jahr{font-family:Consolas,Menlo,Monaco,monospace; color:var(--red); font-weight:700; font-size:15px;}
+  .konto-hauptzahl{display:flex; align-items:baseline; gap:12px; margin-bottom:16px;}
+  .konto-hauptzahl .zahl{font-family:Consolas,Menlo,Monaco,monospace; font-size:44px; font-weight:800; color:var(--black); line-height:1;}
+  .konto-hauptzahl .zahl.warn{color:var(--warn);}
+  .konto-hauptzahl .zahl.bad{color:var(--bad);}
+  .konto-hauptzahl .einheit{font-size:15px; color:var(--gray-700); font-weight:600;}
+  .konto-progress{margin-bottom:16px;}
+  .progress-bar{
+    width:100%; height:10px; background:var(--gray-200); border-radius:20px; overflow:hidden;
+    position:relative;
+  }
+  .progress-fill{
+    height:100%; background:linear-gradient(90deg, #2d8b4f 0%, #4ba770 100%);
+    border-radius:20px; transition:width .4s ease;
+  }
+  .progress-fill.warn{background:linear-gradient(90deg, var(--warn) 0%, #d19b1e 100%);}
+  .progress-fill.bad{background:linear-gradient(90deg, var(--bad) 0%, #d43a55 100%);}
+  .progress-labels{display:flex; justify-content:space-between; margin-top:6px; font-size:12px; color:var(--gray-700); font-family:Consolas,Menlo,Monaco,monospace;}
+  .konto-details{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px;
+    padding-top:14px; border-top:1px solid var(--gray-200);
+  }
+  .konto-details > div{display:flex; flex-direction:column; gap:2px;}
+  .konto-details .label{font-size:11px; text-transform:uppercase; letter-spacing:0.4px; color:var(--gray-400); font-weight:700;}
+  .konto-details .wert{font-family:Consolas,Menlo,Monaco,monospace; font-size:18px; font-weight:700; color:var(--black);}
+
   table{width:100%; border-collapse:collapse; font-size:14px;}
   th{
     text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:0.4px;
@@ -292,6 +326,9 @@
     <input type="password" id="pwChangeWiederholt" autocomplete="new-password" placeholder="Wiederholung">
     <button class="btn-primary" style="width:100%; margin-top:18px;" onclick="handlePasswortAendern()">Passwort speichern</button>
     <div id="pwChangeError" class="error-msg hidden"></div>
+    <div style="text-align:center; margin-top:14px;">
+      <button class="btn-link" onclick="handleLogout()">Abmelden</button>
+    </div>
   </div>
 </div>
 
@@ -306,6 +343,49 @@
     </select>
     <button class="btn-primary" style="width:100%; margin-top:18px;" onclick="handleOnboardingSave()">Bestätigen</button>
     <div id="onboardingError" class="error-msg hidden"></div>
+  </div>
+</div>
+
+<!-- ===================== KORREKTUR BEANTRAGEN (Mitarbeiter) ===================== -->
+<div id="korrekturOverlay" class="onboarding-overlay hidden">
+  <div class="onboarding-card" style="max-width:540px;">
+    <h2 style="margin-top:0;">Korrektur beantragen</h2>
+    <div id="korrekturSubtitle" class="note" style="margin-bottom:14px;"></div>
+    <label>Was soll geändert werden?</label>
+    <select id="korrekturAktion" onchange="toggleKorrekturFelder()">
+      <option value="loeschen">Ich war doch nicht im Urlaub – Antrag löschen</option>
+      <option value="anpassen">Zeitraum korrigieren</option>
+    </select>
+    <div id="korrekturAnpassenFelder" class="hidden">
+      <div class="row">
+        <div>
+          <label>Neues Startdatum</label>
+          <input type="date" id="korrekturNeuStart">
+        </div>
+        <div>
+          <label>Neues Enddatum</label>
+          <input type="date" id="korrekturNeuEnde">
+        </div>
+      </div>
+      <div class="row">
+        <div class="checkbox-row">
+          <input type="checkbox" id="korrekturHalbStart">
+          <label style="margin:0; text-transform:none; font-weight:600;" for="korrekturHalbStart">Starttag: halber Tag</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="korrekturHalbEnde">
+          <label style="margin:0; text-transform:none; font-weight:600;" for="korrekturHalbEnde">Endtag: halber Tag</label>
+        </div>
+      </div>
+    </div>
+    <label>Begründung <span style="color:var(--bad);">*</span></label>
+    <textarea id="korrekturGrund" placeholder="z. B. Ich war doch da / Krankmeldung / Termin verlegt…"></textarea>
+    <div style="display:flex; gap:10px; margin-top:16px;">
+      <button class="btn-primary" style="flex:1;" onclick="submitKorrektur()">Korrektur anfragen</button>
+      <button class="btn-secondary" onclick="closeKorrekturModal()">Abbrechen</button>
+    </div>
+    <div id="korrekturError" class="error-msg hidden"></div>
+    <div id="korrekturSuccess" class="success-msg hidden"></div>
   </div>
 </div>
 
@@ -383,6 +463,7 @@
       <div class="tab active" id="antragTabBtn" data-tab="antrag" onclick="switchTab('antrag')">Neuer Antrag</div>
       <div class="tab" id="meineTabBtn" data-tab="meine" onclick="switchTab('meine')">Meine Anträge</div>
       <div class="tab hidden" id="genehmigenTab" data-tab="genehmigen" onclick="switchTab('genehmigen')">Genehmigen</div>
+      <div class="tab hidden" id="korrekturenTab" data-tab="korrekturen" onclick="switchTab('korrekturen')">Korrekturen <span id="korrekturenBadge" class="badge badge-offen hidden" style="margin-left:4px;">0</span></div>
       <div class="tab hidden" id="monatTab" data-tab="monat" onclick="switchTab('monat')">Monatsübersicht</div>
       <div class="tab hidden" id="resturlaubTab" data-tab="resturlaub" onclick="switchTab('resturlaub')">Resturlaub</div>
       <div class="tab hidden" id="kalenderTab" data-tab="kalender" onclick="switchTab('kalender')">Kalender</div>
@@ -439,6 +520,7 @@
 
     <!-- TAB: Meine Anträge -->
     <div id="tab-meine" class="tab-content hidden">
+      <div id="urlaubKonto" class="urlaub-konto hidden"></div>
       <div class="card">
         <h2><span class="title-txt">Meine <span class="accent">Anträge</span></span></h2>
         <div class="table-scroll">
@@ -485,6 +567,23 @@
         </table>
         </div>
         <div id="adminAntraegeEmpty" class="empty-state hidden">Keine Anträge gefunden.</div>
+      </div>
+    </div>
+
+    <!-- TAB: Korrekturen -->
+    <div id="tab-korrekturen" class="tab-content hidden">
+      <div class="card">
+        <h2><span class="title-txt"><span class="accent">Korrektur</span>anfragen von Mitarbeitern</span></h2>
+        <div class="note" style="margin-bottom:12px;">Anfragen von Mitarbeitern, die einen bereits genehmigten Antrag ändern oder löschen möchten.</div>
+        <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Mitarbeiter</th><th>Antrag</th><th>Anfrage</th><th>Begründung</th><th>Gestellt</th><th>Aktion</th></tr>
+          </thead>
+          <tbody id="korrekturenBody"></tbody>
+        </table>
+        </div>
+        <div id="korrekturenEmpty" class="empty-state hidden">Keine offenen Korrekturanfragen.</div>
       </div>
     </div>
 
@@ -632,6 +731,17 @@
             <button class="btn-primary btn-small" onclick="rolleSpeichern()">Speichern</button>
           </div>
           <div id="rollenError" class="error-msg hidden"></div>
+        </div>
+
+        <div class="settings-section">
+          <h3>🔔 Push-Benachrichtigungen (ntfy.sh)</h3>
+          <div class="note" style="margin-bottom:10px;">Push-Benachrichtigungen bei neuen Korrekturanfragen aufs Handy. Wähle einen schwer zu erratenden Topic-Namen (z.&nbsp;B. eine UUID), installiere die <a href="https://ntfy.sh/" target="_blank" style="color:var(--red);">ntfy-App</a> und abonniere den Topic dort.</div>
+          <div class="inline-form">
+            <div style="flex:2;"><label>Topic-Name</label><input type="text" id="ntfyTopic" placeholder="z.B. hilgenroth-urlaub-xyz123abc"></div>
+            <div style="flex:0;"><button class="btn-primary" onclick="ntfyTopicSpeichern()">Speichern</button></div>
+            <div style="flex:0;"><button class="btn-secondary" onclick="ntfyTest()">Test-Push senden</button></div>
+          </div>
+          <div id="ntfyStatus" class="note"></div>
         </div>
 
       </div>
@@ -840,6 +950,8 @@ let alleAntraegeCache = [];
 let stammdatenCache = {};
 let rollenCache = {};
 let pwStatusCache = {};
+let korrekturenCache = [];
+let ntfyTopic = null;
 
 /* =========================================================================
    AUTH FLOW
@@ -940,6 +1052,7 @@ function zeigeApp(){
   document.getElementById('antragTabBtn').classList.toggle('hidden', !zeigeAntragTab);
   document.getElementById('meineTabBtn').classList.toggle('hidden', nurUebersicht);
   document.getElementById('genehmigenTab').classList.toggle('hidden', !effAdmin);
+  document.getElementById('korrekturenTab').classList.toggle('hidden', !effAdmin);
   document.getElementById('monatTab').classList.toggle('hidden', !effAdmin);
   document.getElementById('resturlaubTab').classList.toggle('hidden', !effAdmin);
   document.getElementById('kalenderTab').classList.toggle('hidden', !effAdmin);
@@ -974,14 +1087,16 @@ function zeigeApp(){
     switchTab(effAdmin ? 'genehmigen' : (kannFuerAndere ? 'antrag' : 'meine'));
   } else {
     ladeMeineAntraege();
+    ladeStammdaten();
   }
+  ladeNtfyTopic();
   if(effAdmin){
     befuelleJahresauswahl();
     ladeAlleAntraege();
+    ladeKorrekturen();
   }
   if(effSuperadmin){
     ladeMitarbeiterListe();
-    ladeStammdaten();
     ladeRollen();
     ladePasswortStatus();
   }
@@ -1224,7 +1339,56 @@ function ladeMeineAntraege(){
     });
     meineAntraegeCache.sort((a,b)=> (b.erstelltAm||0) - (a.erstelltAm||0));
     renderMeineAntraege();
+    renderUrlaubKonto();
   });
+}
+function renderUrlaubKonto(){
+  const box = document.getElementById('urlaubKonto');
+  if(!box) return;
+  if(berechtigung.nurUebersicht || !currentProfile || !currentProfile.name){
+    box.classList.add('hidden');
+    return;
+  }
+  const jahr = new Date().getFullYear();
+  const sd = getStammdatum(String(jahr), currentProfile.name);
+  const restVorjahr = Number(sd.restVorjahr) || 0;
+  const anspruch = Number(sd.anspruch) || 0;
+  const gesamt = restVorjahr + anspruch;
+  const genommen = meineAntraegeCache
+    .filter(a=>a.status==='genehmigt' && (a.art||'urlaub')!=='sonderurlaub' && a.start && a.start.startsWith(String(jahr)))
+    .reduce((sum,a)=>sum+Number(a.tage||0),0);
+  const resturlaub = gesamt - genommen;
+  const anteil = gesamt>0 ? Math.min(100, Math.max(0, (genommen/gesamt)*100)) : 0;
+
+  let zahlCls = '';
+  let progressCls = '';
+  if(resturlaub < 0){ zahlCls = 'bad'; progressCls = 'bad'; }
+  else if(resturlaub <= 5){ zahlCls = 'warn'; progressCls = 'warn'; }
+
+  const fmt = v => String(v).replace('.',',');
+  box.innerHTML =
+    '<div class="konto-header">'+
+      '<h3>Mein Urlaubskonto</h3>'+
+      '<span class="jahr">'+jahr+'</span>'+
+    '</div>'+
+    '<div class="konto-hauptzahl">'+
+      '<span class="zahl '+zahlCls+'">'+fmt(resturlaub)+'</span>'+
+      '<span class="einheit">Tage Resturlaub</span>'+
+    '</div>'+
+    '<div class="konto-progress">'+
+      '<div class="progress-bar"><div class="progress-fill '+progressCls+'" style="width:'+anteil.toFixed(1)+'%;"></div></div>'+
+      '<div class="progress-labels">'+
+        '<span>'+fmt(genommen)+' Tage genommen</span>'+
+        '<span>'+fmt(gesamt)+' Tage insgesamt</span>'+
+      '</div>'+
+    '</div>'+
+    '<div class="konto-details">'+
+      '<div><span class="label">Rest aus Vorjahr</span><span class="wert">'+fmt(restVorjahr)+'</span></div>'+
+      '<div><span class="label">Anspruch '+jahr+'</span><span class="wert">'+fmt(anspruch)+'</span></div>'+
+      '<div><span class="label">Bereits genommen</span><span class="wert">'+fmt(genommen)+'</span></div>'+
+      '<div><span class="label">Verbleibend</span><span class="wert" style="color:var(--red);">'+fmt(resturlaub)+'</span></div>'+
+    '</div>';
+  box.classList.remove('hidden');
 }
 function renderMeineAntraege(){
   const body = document.getElementById('meineAntraegeBody');
@@ -1241,6 +1405,10 @@ function renderMeineAntraege(){
       (a.erstelltVon && a.uid !== currentUser.uid ? '<br><span class="note" style="margin:0;">eingetragen von '+a.erstelltVon+'</span>' : '');
     const gestellt = a.erstelltAm ? new Date(a.erstelltAm).toLocaleDateString('de-DE') : '–';
     const kannZurueckziehen = a.status==='offen' && a.uid===currentUser.uid;
+    const kannKorrigieren = a.status==='genehmigt' && (a.name === (currentProfile && currentProfile.name));
+    let aktionCell = '';
+    if(kannZurueckziehen) aktionCell = '<button class="btn-secondary btn-small" onclick="zurueckziehen(\''+a.id+'\')">Zurückziehen</button>';
+    if(kannKorrigieren) aktionCell = '<button class="btn-secondary btn-small" onclick="openKorrekturModal(\''+a.id+'\')">Korrektur anfragen</button>';
     tr.innerHTML =
       '<td>'+zeitraum+'</td>'+
       '<td class="mono">'+String(a.tage).replace('.',',')+'</td>'+
@@ -1248,7 +1416,7 @@ function renderMeineAntraege(){
       '<td><span class="badge badge-'+a.status+'">'+labelStatus(a.status)+'</span></td>'+
       '<td>'+(a.bemerkung || '<span class="note" style="margin:0;">–</span>')+'</td>'+
       '<td class="mono">'+gestellt+'</td>'+
-      '<td>'+(kannZurueckziehen ? '<button class="btn-secondary btn-small" onclick="zurueckziehen(\''+a.id+'\')">Zurückziehen</button>' : '')+'</td>';
+      '<td>'+aktionCell+'</td>';
     body.appendChild(tr);
   });
 }
@@ -1542,6 +1710,7 @@ function ladeStammdaten(){
     stammdatenCache = snap.exists() ? snap.val() : {};
     renderResturlaub();
     renderStammdatenEditor();
+    renderUrlaubKonto();
   });
 }
 function getStammdatum(jahr, name){
@@ -1973,6 +2142,252 @@ async function rolleLoeschen(key){
   if(!confirm('Diese Rolle wirklich entfernen?')) return;
   try{
     await db.ref('berechtigungen/'+key).remove();
+  }catch(err){
+    alert('Fehler: '+err.message);
+  }
+}
+/* =========================================================================
+   NTFY.SH PUSH-BENACHRICHTIGUNGEN
+   ========================================================================= */
+function ladeNtfyTopic(){
+  db.ref('settings/ntfyTopic').on('value', snap=>{
+    ntfyTopic = snap.exists() ? String(snap.val()).trim() : null;
+    const inp = document.getElementById('ntfyTopic');
+    if(inp) inp.value = ntfyTopic || '';
+  });
+}
+async function ntfyTopicSpeichern(){
+  const val = document.getElementById('ntfyTopic').value.trim();
+  const statusEl = document.getElementById('ntfyStatus');
+  try{
+    if(val){
+      const sauber = val.replace(/^https?:\/\/ntfy\.sh\//,'').replace(/^\//,'').split('/')[0];
+      await db.ref('settings/ntfyTopic').set(sauber);
+      statusEl.textContent = 'Topic "'+sauber+'" gespeichert.';
+    } else {
+      await db.ref('settings/ntfyTopic').remove();
+      statusEl.textContent = 'Topic entfernt.';
+    }
+  }catch(err){
+    statusEl.textContent = 'Fehler: '+err.message;
+  }
+}
+async function ntfyTest(){
+  const val = document.getElementById('ntfyTopic').value.trim() || ntfyTopic;
+  const statusEl = document.getElementById('ntfyStatus');
+  if(!val){ statusEl.textContent = 'Bitte erst ein Topic eintragen und speichern.'; return; }
+  const ok = await sendeNtfy('🔔 Test-Benachrichtigung', 'Deine Urlaubszentrale kann dich jetzt benachrichtigen.', 'default', val);
+  statusEl.textContent = ok ? 'Test-Push gesendet. Prüfe deine ntfy-App.' : 'Konnte Push nicht senden (Topic falsch oder Netzwerkfehler).';
+}
+async function sendeNtfy(titel, nachricht, prio, topicOverride){
+  const topic = topicOverride || ntfyTopic;
+  if(!topic) return false;
+  try{
+    await fetch('https://ntfy.sh/'+topic, {
+      method:'POST',
+      body: nachricht,
+      headers:{
+        'Title': titel,
+        'Priority': prio || 'default',
+        'Tags': 'calendar,office'
+      }
+    });
+    return true;
+  }catch(err){
+    console.error('ntfy-Fehler:', err);
+    return false;
+  }
+}
+
+/* =========================================================================
+   KORREKTURANFRAGE (Mitarbeiter)
+   ========================================================================= */
+let korrekturAntragId = null;
+function openKorrekturModal(antragId){
+  const a = meineAntraegeCache.find(x=>x.id===antragId);
+  if(!a) return;
+  korrekturAntragId = antragId;
+  const zeitraum = formatDatum(a.start) + (a.start!==a.ende ? ' – '+formatDatum(a.ende) : '');
+  document.getElementById('korrekturSubtitle').innerHTML =
+    'Antrag: <strong>'+zeitraum+'</strong> ('+String(a.tage).replace('.',',')+' Tage · '+labelStatus(a.status)+')';
+  document.getElementById('korrekturAktion').value = 'loeschen';
+  document.getElementById('korrekturNeuStart').value = a.start;
+  document.getElementById('korrekturNeuEnde').value = a.ende;
+  document.getElementById('korrekturHalbStart').checked = !!a.halbTagStart;
+  document.getElementById('korrekturHalbEnde').checked = !!a.halbTagEnde;
+  document.getElementById('korrekturGrund').value = '';
+  toggleKorrekturFelder();
+  hide('korrekturError'); hide('korrekturSuccess');
+  show('korrekturOverlay');
+}
+function closeKorrekturModal(){
+  hide('korrekturOverlay');
+  korrekturAntragId = null;
+}
+function toggleKorrekturFelder(){
+  const aktion = document.getElementById('korrekturAktion').value;
+  document.getElementById('korrekturAnpassenFelder').classList.toggle('hidden', aktion !== 'anpassen');
+}
+async function submitKorrektur(){
+  hide('korrekturError'); hide('korrekturSuccess');
+  if(!korrekturAntragId) return;
+  const aktion = document.getElementById('korrekturAktion').value;
+  const grund = document.getElementById('korrekturGrund').value.trim();
+  if(!grund){
+    zeigeFehler('korrekturError','Bitte eine Begründung angeben.');
+    return;
+  }
+  const original = meineAntraegeCache.find(x=>x.id===korrekturAntragId);
+  if(!original) return;
+
+  const anfrage = {
+    antragId: korrekturAntragId,
+    uid: currentUser.uid,
+    name: currentProfile.name,
+    standort: currentProfile.standort || '',
+    antragInfo: {
+      start: original.start,
+      ende: original.ende,
+      tage: original.tage,
+      art: original.art || 'urlaub',
+      halbTagStart: !!original.halbTagStart,
+      halbTagEnde: !!original.halbTagEnde
+    },
+    aktion,
+    grund,
+    status: 'offen',
+    erstelltAm: firebase.database.ServerValue.TIMESTAMP,
+    entschiedenAm: null,
+    entschiedenVon: null
+  };
+  if(aktion==='anpassen'){
+    anfrage.neuStart = document.getElementById('korrekturNeuStart').value;
+    anfrage.neuEnde = document.getElementById('korrekturNeuEnde').value;
+    anfrage.neuHalbTagStart = document.getElementById('korrekturHalbStart').checked;
+    anfrage.neuHalbTagEnde = document.getElementById('korrekturHalbEnde').checked;
+    if(!anfrage.neuStart || !anfrage.neuEnde){
+      zeigeFehler('korrekturError','Bitte neues Start- und Enddatum angeben.');
+      return;
+    }
+  }
+
+  try{
+    await db.ref('korrekturanfragen').push(anfrage);
+    // ntfy-Push an Admin
+    const zeitraum = formatDatum(original.start)+(original.start!==original.ende?'–'+formatDatum(original.ende):'');
+    const kurztext = aktion==='loeschen'
+      ? currentProfile.name+' möchte Urlaub '+zeitraum+' löschen: '+grund
+      : currentProfile.name+' möchte Urlaub '+zeitraum+' anpassen: '+grund;
+    sendeNtfy('📝 Neue Korrekturanfrage', kurztext, 'high');
+
+    const ok = document.getElementById('korrekturSuccess');
+    ok.textContent = 'Korrekturanfrage gestellt. Du bekommst Bescheid, sobald sie bearbeitet wurde.';
+    ok.classList.remove('hidden');
+    setTimeout(closeKorrekturModal, 1800);
+  }catch(err){
+    zeigeFehler('korrekturError','Fehler: '+err.message);
+  }
+}
+
+/* =========================================================================
+   KORREKTURANFRAGEN (Admin-Ansicht)
+   ========================================================================= */
+function ladeKorrekturen(){
+  db.ref('korrekturanfragen').on('value', snap=>{
+    korrekturenCache = [];
+    snap.forEach(child=>{
+      korrekturenCache.push({id:child.key, ...child.val()});
+    });
+    korrekturenCache.sort((a,b)=> (b.erstelltAm||0) - (a.erstelltAm||0));
+    renderKorrekturen();
+  });
+}
+function renderKorrekturen(){
+  const body = document.getElementById('korrekturenBody');
+  const badge = document.getElementById('korrekturenBadge');
+  if(!body) return;
+  const offen = korrekturenCache.filter(k=>k.status==='offen');
+  if(badge){
+    if(offen.length>0){
+      badge.textContent = offen.length;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+  body.innerHTML = '';
+  if(korrekturenCache.length===0){
+    show('korrekturenEmpty');
+    return;
+  }
+  hide('korrekturenEmpty');
+  korrekturenCache.forEach(k=>{
+    const tr = document.createElement('tr');
+    const info = k.antragInfo || {};
+    const alterZeitraum = formatDatum(info.start)+(info.start!==info.ende?' – '+formatDatum(info.ende):'');
+    let anfrageTxt = '';
+    if(k.aktion==='loeschen'){
+      anfrageTxt = '<span class="badge badge-abgelehnt">Löschen</span>';
+    } else {
+      const neuerZeitraum = formatDatum(k.neuStart)+(k.neuStart!==k.neuEnde?' – '+formatDatum(k.neuEnde):'');
+      anfrageTxt = '<span class="badge badge-offen">Anpassen</span><br><span class="note" style="margin:0;">neu: '+neuerZeitraum+'</span>';
+    }
+    const gestellt = k.erstelltAm ? new Date(k.erstelltAm).toLocaleDateString('de-DE') : '–';
+    let aktion = '';
+    if(k.status==='offen'){
+      aktion = '<button class="btn-ok btn-small" onclick="korrekturUebernehmen(\''+k.id+'\')">Übernehmen</button> '+
+               '<button class="btn-danger btn-small" onclick="korrekturAblehnen(\''+k.id+'\')">Ablehnen</button>';
+    } else {
+      aktion = '<span class="badge badge-'+(k.status==='genehmigt'?'genehmigt':'abgelehnt')+'">'+labelStatus(k.status)+'</span>'+
+               (k.entschiedenVon ? '<br><span class="note" style="margin:0;">von '+k.entschiedenVon+'</span>' : '');
+    }
+    tr.innerHTML =
+      '<td>'+k.name+'<br><span class="note" style="margin:0;">'+(k.standort||'')+'</span></td>'+
+      '<td>'+alterZeitraum+'<br><span class="note" style="margin:0;">'+String(info.tage||'').replace('.',',')+' Tage</span></td>'+
+      '<td>'+anfrageTxt+'</td>'+
+      '<td>'+(k.grund||'')+'</td>'+
+      '<td class="mono">'+gestellt+'</td>'+
+      '<td style="white-space:nowrap;">'+aktion+'</td>';
+    body.appendChild(tr);
+  });
+}
+async function korrekturUebernehmen(id){
+  const k = korrekturenCache.find(x=>x.id===id);
+  if(!k) return;
+  if(!confirm('Korrektur übernehmen? Der Original-Antrag wird '+(k.aktion==='loeschen'?'gelöscht':'angepasst')+'.')) return;
+  try{
+    if(k.aktion==='loeschen'){
+      await db.ref('antraege/'+k.antragId).remove();
+    } else {
+      // Tage neu berechnen mit Arbeitstagen des Mitarbeiters
+      const tage = berechneUrlaubstage(k.neuStart, k.neuEnde, k.neuHalbTagStart, k.neuHalbTagEnde, getArbeitstage(k.name));
+      await db.ref('antraege/'+k.antragId).update({
+        start: k.neuStart,
+        ende: k.neuEnde,
+        halbTagStart: !!k.neuHalbTagStart,
+        halbTagEnde: !!k.neuHalbTagEnde,
+        tage,
+        bearbeitetAm: firebase.database.ServerValue.TIMESTAMP,
+        bearbeitetVon: currentProfile.name + ' (Korrektur)'
+      });
+    }
+    await db.ref('korrekturanfragen/'+id).update({
+      status:'genehmigt',
+      entschiedenAm: firebase.database.ServerValue.TIMESTAMP,
+      entschiedenVon: currentProfile.name
+    });
+  }catch(err){
+    alert('Fehler: '+err.message);
+  }
+}
+async function korrekturAblehnen(id){
+  if(!confirm('Korrekturanfrage ablehnen? Der Original-Antrag bleibt unverändert.')) return;
+  try{
+    await db.ref('korrekturanfragen/'+id).update({
+      status:'abgelehnt',
+      entschiedenAm: firebase.database.ServerValue.TIMESTAMP,
+      entschiedenVon: currentProfile.name
+    });
   }catch(err){
     alert('Fehler: '+err.message);
   }
