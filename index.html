@@ -614,6 +614,13 @@
         <div class="note" style="margin-bottom:12px;">
           Trage täglich deinen Status ein. Urlaub wird automatisch vorausgefüllt. Leere Felder = noch nicht eingetragen.
         </div>
+        <div style="margin-bottom:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div id="anwUndoLeiste" style="display:none; align-items:center; gap:10px;">
+            <button class="btn-secondary btn-small" onclick="anwUndo()" id="anwUndoBtn">↩️ Rückgängig</button>
+            <span class="note" style="margin:0;" id="anwUndoInfo"></span>
+          </div>
+          <button class="btn-secondary btn-small" onclick="anwMonatZuruecksetzen()" style="margin-left:auto;">🗑️ Ganzen Monat leeren</button>
+        </div>
         <div id="anwMehrfachToolbar" style="display:none; margin-bottom:10px; padding:10px 14px; background:#fff8e1; border:1.5px solid #f0c040; border-radius:8px; align-items:center; gap:10px; flex-wrap:wrap;">
           <span style="font-weight:700; font-size:13px;" id="anwAuswahlAnzahl">0 ausgewählt</span>
           <span style="color:var(--gray-700); font-size:12px; font-weight:600;">für Tag:</span>
@@ -2786,6 +2793,65 @@ function istFesterUrlaub(maName, tag, monat, jahr){
   );
 }
 
+
+/* ---- UNDO-Funktion fuer Anwesenheitsliste ---- */
+window._anwUndoStack = [];
+
+// Speichert den aktuellen Zustand der betroffenen Pfade, bevor geaendert wird
+async function anwUndoSnapshot(pfade, beschreibung){
+  const vorher = {};
+  for(const p of pfade){
+    const snap = await db.ref(p).once('value');
+    vorher[p] = snap.exists() ? snap.val() : null;
+  }
+  window._anwUndoStack.push({vorher, beschreibung, zeit: new Date()});
+  // Max. 20 Schritte merken
+  if(window._anwUndoStack.length > 20) window._anwUndoStack.shift();
+  anwUndoLeisteAktualisieren();
+}
+
+function anwUndoLeisteAktualisieren(){
+  const leiste = document.getElementById('anwUndoLeiste');
+  const info   = document.getElementById('anwUndoInfo');
+  if(!leiste) return;
+  const n = window._anwUndoStack.length;
+  if(n === 0){ leiste.style.display = 'none'; return; }
+  leiste.style.display = 'flex';
+  const letzter = window._anwUndoStack[n-1];
+  info.textContent = `Letzte Aktion: ${letzter.beschreibung} (${n} Schritt${n>1?'e':''} rückgängig machbar)`;
+}
+
+async function anwMonatZuruecksetzen(){
+  const monat = parseInt(document.getElementById('anwMonat').value);
+  const jahr  = parseInt(document.getElementById('anwJahr').value);
+  const mNamen = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  if(!confirm(`Wirklich ALLE manuell eingetragenen Werte für ${mNamen[monat]} ${jahr} löschen?\n\nUrlaubstage aus Anträgen bleiben erhalten (die stehen nicht in dieser Tabelle).`)) return;
+  const pfad = 'anwesenheit/'+jahr+'/'+monat;
+  await anwUndoSnapshot([pfad], `Monat ${mNamen[monat]} ${jahr} geleert`);
+  try{
+    await db.ref(pfad).remove();
+    renderAnwesenheit();
+  }catch(err){
+    alert('Fehler: '+err.message);
+  }
+}
+
+async function anwUndo(){
+  if(window._anwUndoStack.length === 0) return;
+  const schritt = window._anwUndoStack.pop();
+  const updates = {};
+  Object.keys(schritt.vorher).forEach(p=>{
+    updates[p] = schritt.vorher[p];
+  });
+  try{
+    await db.ref('/').update(updates);
+    anwUndoLeisteAktualisieren();
+    renderAnwesenheit();
+  }catch(err){
+    alert('Rückgängig fehlgeschlagen: '+err.message);
+  }
+}
+
 function befuelleAnwDropdowns(){
   const mSel = document.getElementById('anwMonat');
   const jSel = document.getElementById('anwJahr');
@@ -2908,15 +2974,17 @@ function renderAnwesenheit(){
         if(festerUrlaub) wert = getAutoWert(m.name, t, monat, jahr);  // Urlaub hat Vorrang, nicht ueberschreibbar
         else if(!wert) wert = getAutoWert(m.name, t, monat, jahr);
         const nichtEditierbar = we || ft || festerUrlaub;
-        const bg   = nichtEditierbar ? '#F2F2F2' : (ANW_FARBEN[wert]||'#FAFAFA');
-        const txtC = nichtEditierbar ? '#CCCCCC' : (ANW_FARBEN_TEXT[wert]||'#CCCCCC');
+        // Wochenende/Feiertag grau, Urlaub in Urlaubsfarbe (deutlich sichtbar!), Rest normal
+        const bg   = (we||ft) ? '#F2F2F2' : (ANW_FARBEN[wert]||'#FAFAFA');
+        const txtC = (we||ft) ? '#CCCCCC' : (ANW_FARBEN_TEXT[wert]||'#CCCCCC');
         const outline = isToday ? 'box-shadow:inset 0 0 0 2px var(--red);' : '';
         if(wert==='U') sumU++;
         else if(wert==='K'||wert==='KK'||wert==='SOU'||wert==='EZ') sumAbw++;
         if(nichtEditierbar){
           const anzeige = (we||ft) ? '' : wert;
-          const titel = festerUrlaub ? `${m.name} – ${t}.${monat+1}.${jahr} · Urlaub (fest, aus Antrag)` : '';
-          html += `<td title="${titel}" style="text-align:center; background:${bg}; ${outline} border-radius:3px; height:24px; padding:0;
+          const titel = festerUrlaub ? `${m.name} – ${t}.${monat+1}.${jahr} · ${wert==='SOU'?'Sonderurlaub':'Urlaub'} (fest aus Antrag, nicht änderbar)` : '';
+          const lockStyle = festerUrlaub ? 'border:2px solid #1a5276;' : '';
+          html += `<td title="${titel}" style="text-align:center; background:${bg}; ${outline}${lockStyle} border-radius:3px; height:24px; padding:0;
             font-size:10px; font-weight:700; color:${txtC}; font-family:Consolas,monospace; cursor:not-allowed;">${anzeige}</td>`;
         } else {
           html += `<td style="text-align:center; background:${bg}; ${outline} border-radius:3px; height:24px; padding:0; cursor:pointer;"
@@ -3042,12 +3110,16 @@ function anwMehrfachSetzen(wert){
     return;
   }
 
-  db.ref('/').update(updates).then(()=>{
-    if(uebersprungen>0){
-      alert(uebersprungen+' Mitarbeiter übersprungen (Urlaub kann nicht überschrieben werden).');
-    }
-    anwAuswahlAufheben();
-    renderAnwesenheit();
+  const monatsNamen = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  const beschreibung = `${Object.keys(updates).length} Mitarbeiter am ${tag}. ${monatsNamen[monat]} → "${wert||'gelöscht'}"`;
+  anwUndoSnapshot(Object.keys(updates), beschreibung).then(()=>{
+    db.ref('/').update(updates).then(()=>{
+      if(uebersprungen>0){
+        alert(uebersprungen+' Mitarbeiter übersprungen (Urlaub kann nicht überschrieben werden).');
+      }
+      anwAuswahlAufheben();
+      renderAnwesenheit();
+    });
   });
 }
 
@@ -3080,10 +3152,13 @@ function anwTagAlleSetzen(jahr, monat, tag){
         const maKey = m.name.replace(/[.#$[\]\/]/g,'_');
         updates['anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+tag] = v||null;
       });
-      db.ref('/').update(updates).then(()=>{
-        popup.remove();
-        renderAnwesenheit();
-        if(uebersprungen>0) setTimeout(()=>alert(uebersprungen+' Mitarbeiter übersprungen (Urlaub bleibt bestehen).'), 200);
+      const mNamen = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+      anwUndoSnapshot(Object.keys(updates), `Alle am ${tag}. ${mNamen[monat]} → "${v||'gelöscht'}"`).then(()=>{
+        db.ref('/').update(updates).then(()=>{
+          popup.remove();
+          renderAnwesenheit();
+          if(uebersprungen>0) setTimeout(()=>alert(uebersprungen+' Mitarbeiter übersprungen (Urlaub bleibt bestehen).'), 200);
+        });
       });
     };
     btnWrap.appendChild(btn);
@@ -3111,7 +3186,15 @@ function anwZelleKlick(td, jahr, monat, tag, maKey, aktuellerWert){
     btn.style.cssText = `padding:5px 10px; border:none; border-radius:5px; cursor:pointer; font-size:12px; font-weight:700;
       background:${v?ANW_FARBEN[v]:'#F5F5F5'}; color:${v?ANW_FARBEN_TEXT[v]:'#999'};`+
       (v===aktuellerWert?'outline:2px solid #C8102E;':'');
-    btn.onclick=()=>{ speichereAnwTagByKey(jahr,monat,maKey,tag,v); popup.remove(); renderAnwesenheit(); };
+    btn.onclick=()=>{
+      const pfad = 'anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+tag;
+      const mN = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+      anwUndoSnapshot([pfad], `${maKey.replace(/_/g,' ')} am ${tag}. ${mN[monat]} → "${v||'gelöscht'}"`).then(()=>{
+        speichereAnwTagByKey(jahr,monat,maKey,tag,v);
+        popup.remove();
+        renderAnwesenheit();
+      });
+    };
     popup.appendChild(btn);
   });
   const rect=td.getBoundingClientRect();
