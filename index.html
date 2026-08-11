@@ -500,6 +500,7 @@
       <div class="tab active" id="antragTabBtn" data-tab="antrag" onclick="switchTab('antrag')">Neuer Antrag</div>
       <div class="tab" id="meineTabBtn" data-tab="meine" onclick="switchTab('meine')">Meine Anträge</div>
       <div class="tab" id="meinKalenderTabBtn" data-tab="meinkalender" onclick="switchTab('meinkalender')">Mein Kalender</div>
+      <div class="tab hidden" id="anwesenheitTabBtn" data-tab="anwesenheit" onclick="switchTab('anwesenheit')">Anwesenheitsliste</div>
       <div class="tab hidden" id="genehmigenTab" data-tab="genehmigen" onclick="switchTab('genehmigen')">Genehmigen</div>
       <div class="tab hidden" id="korrekturenTab" data-tab="korrekturen" onclick="switchTab('korrekturen')">Korrekturen <span id="korrekturenBadge" class="badge badge-offen hidden" style="margin-left:4px;">0</span></div>
       <div class="tab hidden" id="monatTab" data-tab="monat" onclick="switchTab('monat')">Monatsübersicht</div>
@@ -589,6 +590,48 @@
           <span><span class="box" style="background:#ececec;"></span> Feiertag</span>
           <span><span class="box" style="border:2px solid var(--red); background:var(--white);"></span> Heute</span>
         </div>
+      </div>
+    </div>
+
+    <!-- TAB: Anwesenheitsliste (nur Busemann) -->
+    <div id="tab-anwesenheit" class="tab-content hidden">
+      <div class="card">
+        <h2>
+          <span class="title-txt">Meine <span class="accent">Anwesenheitsliste</span></span>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <select id="anwMonat" onchange="renderAnwesenheit()" style="width:auto;"></select>
+            <select id="anwJahr" onchange="renderAnwesenheit()" style="width:auto;"></select>
+            <button class="btn-primary btn-small" onclick="anwMailSenden()">📧 Als Mail senden</button>
+            <button class="btn-secondary btn-small" onclick="exportAnwesenheitExcel()">📥 Excel-Export</button>
+          </div>
+        </h2>
+        <!-- Empfänger-Einstellung -->
+        <div style="margin-bottom:12px; padding:10px 14px; background:var(--gray-100); border-radius:6px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <span style="font-size:12.5px; font-weight:700; color:var(--gray-700);">📬 Empfänger:</span>
+          <input type="text" id="anwEmpfaenger" placeholder="z.B. grisail@rudolf-hilgenroth.de" style="flex:1; min-width:220px; max-width:380px; font-size:13px;" oninput="anwEmpfaengerSpeichern()">
+          <span class="note" style="margin:0;">Mehrere Adressen mit Komma trennen</span>
+        </div>
+        <div class="note" style="margin-bottom:12px;">
+          Trage täglich deinen Status ein. Urlaub wird automatisch vorausgefüllt. Leere Felder = noch nicht eingetragen.
+        </div>
+        <div id="anwMehrfachToolbar" style="display:none; margin-bottom:10px; padding:10px 14px; background:#fff8e1; border:1.5px solid #f0c040; border-radius:8px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <span style="font-weight:700; font-size:13px;" id="anwAuswahlAnzahl">0 ausgewählt</span>
+          <span style="color:var(--gray-400); font-size:12px;">Status setzen für alle markierten:</span>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;" id="anwMehrfachButtons"></div>
+          <button class="btn-secondary btn-small" onclick="anwAuswahlAufheben()">✕ Auswahl aufheben</button>
+        </div>
+        <div id="anwesenheitGrid"></div>
+        <div class="legend" style="margin-top:14px;">
+          <span><span class="box" style="background:#C6EFCE;"></span> X – anwesend</span>
+          <span><span class="box" style="background:#DDEEFF;"></span> U – Urlaub</span>
+          <span><span class="box" style="background:#FFE0E0;"></span> K – krank</span>
+          <span><span class="box" style="background:#FFEB9C;"></span> KK – Kinder-krank</span>
+          <span><span class="box" style="background:#FFD966;"></span> SOU – Sonderurlaub</span>
+          <span><span class="box" style="background:#E8D5F5;"></span> EZ – Elternzeit</span>
+          <span><span class="box" style="background:#EBEBEB;"></span> F – Freistellung</span>
+          <span><span class="box" style="background:#BDD7EE;"></span> BU – Betriebsurlaub</span>
+        </div>
+        <div id="anwesenheitSummen" style="margin-top:14px; padding:12px; background:var(--gray-100); border-radius:6px; font-size:13px;"></div>
       </div>
     </div>
 
@@ -1117,6 +1160,8 @@ function zeigeApp(){
   document.getElementById('antragTabBtn').classList.toggle('hidden', !zeigeAntragTab);
   document.getElementById('meineTabBtn').classList.toggle('hidden', nurUebersicht);
   document.getElementById('meinKalenderTabBtn').classList.toggle('hidden', nurUebersicht);
+  const istBusemann = (currentUser && (currentUser.email||'').toLowerCase() === 'busemann@rudolf-hilgenroth.de');
+  document.getElementById('anwesenheitTabBtn').classList.toggle('hidden', !istBusemann);
   document.getElementById('genehmigenTab').classList.toggle('hidden', !effAdmin);
   document.getElementById('korrekturenTab').classList.toggle('hidden', !effAdmin);
   document.getElementById('monatTab').classList.toggle('hidden', !effAdmin);
@@ -1289,6 +1334,7 @@ function switchTab(name){
   document.getElementById('tab-'+name).classList.remove('hidden');
   if(name==='kalender') renderKalender();
   if(name==='meinkalender') renderMeinKalender();
+  if(name==='anwesenheit'){ renderAnwesenheit(); anwEmpfaengerLaden(); }
   if(name==='resturlaub') renderResturlaub();
   if(name==='monat') renderMonatsuebersicht();
 }
@@ -2579,6 +2625,538 @@ async function korrekturAblehnen(id){
     alert('Fehler: '+err.message);
   }
 }
+/* =========================================================================
+   ANWESENHEITSLISTE (nur Busemann)
+   ========================================================================= */
+const ANW_WERTE = ['X','U','K','KK','SOU','EZ','F','BU'];
+const ANW_FARBEN = {
+  X:'#C6EFCE', U:'#DDEEFF', K:'#FFE0E0', KK:'#FFEB9C',
+  SOU:'#FFD966', EZ:'#E8D5F5', F:'#EBEBEB', BU:'#BDD7EE',
+  WE:'#F5F5F5', FT:'#EBEBEB', '':'#ffffff'
+};
+const ANW_FARBEN_TEXT = {
+  X:'#1a5c2a', U:'#1a5276', K:'#7b1818', KK:'#7d5a00',
+  SOU:'#7d4e00', EZ:'#6a1b9a', F:'#555555', BU:'#1a3a5c',
+  WE:'#BBBBBB', FT:'#999999', '':'#CCCCCC'
+};
+
+// Feste Reihenfolge der Anwesenheitsliste (wie in der handschriftlichen Liste)
+const ANW_REIHENFOLGE = [
+  "Jan Bräutigam","Christoph Brüggemann","Anette Busemann","Robin Gatzemeier",
+  "Rüdiger Greve","Pascal Grisail","Sebastian Hauschulte","Walter Husteden",
+  "Christoph Kremer","Andrea Liedhegener","Stefan Lucas","Dennis Maag",
+  "Daniela Miederhoff","Dominik Schulte","Matthias Struwe","Andreas Tschernisch",
+  "Jonas Werthschulte","Vera Henneke","Andre Niepel"
+];
+function sortiereAnwesenheit(liste){
+  return ANW_REIHENFOLGE
+    .map(n => liste.find(m=>m.name===n))
+    .filter(Boolean);
+}
+
+
+// Empfänger in Firebase speichern und laden
+function anwEmpfaengerLaden(){
+  db.ref('settings/anwEmpfaenger').once('value', snap=>{
+    const el = document.getElementById('anwEmpfaenger');
+    if(el && snap.exists()) el.value = snap.val();
+  });
+}
+function anwEmpfaengerSpeichern(){
+  const val = document.getElementById('anwEmpfaenger').value.trim();
+  db.ref('settings/anwEmpfaenger').set(val||null);
+}
+
+async function anwMailSenden(){
+  const monat = parseInt(document.getElementById('anwMonat').value);
+  const jahr  = parseInt(document.getElementById('anwJahr').value);
+  const monate = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  const monatName = monate[monat];
+  const tageImMonat = new Date(jahr, monat+1, 0).getDate();
+  const WT = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+  const empfaenger = document.getElementById('anwEmpfaenger').value.trim() || 'grisail@rudolf-hilgenroth.de';
+  const sortiert = sortiereAnwesenheit(MITARBEITER);
+
+  const snap = await db.ref('anwesenheit/'+jahr+'/'+monat).once('value');
+  const alleGespeichert = snap.exists() ? snap.val() : {};
+
+  // Farbwerte als Inline-CSS fuer Mail-Tabelle
+  const MAIL_BG = {
+    X:'#C6EFCE', U:'#DDEEFF', K:'#FFE0E0', KK:'#FFEB9C',
+    SOU:'#FFD966', EZ:'#E8D5F5', F:'#EBEBEB', '':'#FFFFFF'
+  };
+  const MAIL_FG = {
+    X:'#1a5c2a', U:'#1a5276', K:'#7b1818', KK:'#7d5a00',
+    SOU:'#7d4e00', EZ:'#6a1b9a', F:'#555555', '':'#CCCCCC'
+  };
+
+  // HTML-Tabelle aufbauen (Inline-CSS fuer Mail-Clients)
+  let tbl = `<table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse; font-family:Arial,sans-serif; font-size:11px; border-color:#CCCCCC;">`;
+
+  // Titelzeile
+  const colspan = tageImMonat + 3; // Name + Standort + Tage + ΣU + ΣAbw
+  tbl += `<tr><td colspan="${colspan}" style="background:#C8102E; color:#fff; font-size:14px; font-weight:bold; padding:8px 12px; text-align:left;">
+    Anwesenheitsliste ${monatName} ${jahr}
+  </td></tr>`;
+
+  // Header: Name | Standort | 1 | 2 | ... | ΣU | ΣAbw
+  tbl += '<tr>';
+  tbl += '<th style="background:#444; color:#fff; padding:4px 8px; min-width:130px; text-align:left;">Mitarbeiter</th>';
+  for(let t=1; t<=tageImMonat; t++){
+    const d = new Date(jahr, monat, t);
+    const we = d.getDay()===0||d.getDay()===6;
+    const ft = istFeiertag(d);
+    const bg = we||ft ? '#AAAAAA' : '#444444';
+    tbl += `<th style="background:${bg}; color:#fff; padding:3px 1px; text-align:center; min-width:20px; font-size:9px;">${t}<br>${WT[d.getDay()]}</th>`;
+  }
+  tbl += '<th style="background:#1a5276; color:#fff; padding:3px 4px; text-align:center;">ΣU</th>';
+  tbl += '<th style="background:#7b1818; color:#fff; padding:3px 4px; text-align:center;">ΣAbw</th>';
+  tbl += '</tr>';
+
+  // Mitarbeiter-Zeilen
+  sortiert.forEach((m, idx)=>{
+    const maKey = m.name.replace(/[.#$[\]\/]/g,'_');
+    const maGes = alleGespeichert[maKey] || {};
+    const rowBg = idx%2===0 ? '#FFFFFF' : '#F9F9F9';
+    tbl += `<tr style="background:${rowBg};">`;
+    tbl += `<td style="padding:4px 8px; font-weight:bold; white-space:nowrap; font-size:11px;">${m.name}</td>`;
+    let sumU=0, sumAbw=0;
+    for(let t=1; t<=tageImMonat; t++){
+      const d = new Date(jahr, monat, t);
+      const we = d.getDay()===0||d.getDay()===6;
+      const ft = istFeiertag(d);
+      let wert = maGes[t] || '';
+      if(!wert && !we && !ft) wert = getAutoWert(m.name, t, monat, jahr);
+      if(we||ft){
+        tbl += `<td style="background:#F0F0F0; text-align:center; color:#CCC; font-size:9px;"></td>`;
+      } else {
+        const bg = MAIL_BG[wert]||'#FFFFFF';
+        const fg = MAIL_FG[wert]||'#CCCCCC';
+        if(wert==='U') sumU++;
+        else if(wert==='K'||wert==='KK'||wert==='SOU'||wert==='EZ') sumAbw++;
+        tbl += `<td style="background:${bg}; color:${fg}; text-align:center; font-weight:bold; font-size:10px; padding:2px;">${wert||''}</td>`;
+      }
+    }
+    tbl += `<td style="background:#DDEEFF; color:#1a5276; text-align:center; font-weight:bold; padding:3px;">${sumU||''}</td>`;
+    tbl += `<td style="background:#FFE0E0; color:#7b1818; text-align:center; font-weight:bold; padding:3px;">${sumAbw||''}</td>`;
+    tbl += '</tr>';
+  });
+  tbl += '</table>';
+
+  // Tabelle in Zwischenablage kopieren (als HTML)
+  try{
+    const blob = new Blob([tbl], {type:'text/html'});
+    const plainBlob = new Blob([`Anwesenheitsliste ${monatName} ${jahr}\nBitte die Tabelle aus der Zwischenablage einfügen (Strg+V).`], {type:'text/plain'});
+    const item = new ClipboardItem({'text/html': blob, 'text/plain': plainBlob});
+    await navigator.clipboard.write([item]);
+
+    // Mail öffnen
+    const betreff = encodeURIComponent(`Anwesenheitsliste ${monatName} ${jahr}`);
+    const body = encodeURIComponent(
+      `Hallo,\n\nanbei die Anwesenheitsliste für ${monatName} ${jahr}.\n\n`+
+      `Bitte die Tabelle unten einfügen (Strg+V nach dem Öffnen der Mail):\n\n`+
+      `[Tabelle wurde in die Zwischenablage kopiert – bitte hier einfügen]\n\n`+
+      `Viele Grüße\nAnette Busemann`
+    );
+    window.location.href = `mailto:${empfaenger}?subject=${betreff}&body=${body}`;
+
+    // Hinweis anzeigen
+    setTimeout(()=>{
+      alert('✅ Die Tabelle wurde in die Zwischenablage kopiert.\n\nNach dem Öffnen von Outlook: Cursor in die Mail-Nachricht klicken und Strg+V drücken – die formatierte Tabelle wird eingefügt.');
+    }, 500);
+  }catch(err){
+    // Fallback: nur Mail öffnen ohne Tabelle
+    alert('Zwischenablage konnte nicht befüllt werden.\nDie Mail wird ohne Tabelle geöffnet – du kannst die Liste manuell aus dem Browser-Tab kopieren (Strg+A, Strg+C).');
+    const betreff = encodeURIComponent(`Anwesenheitsliste ${monatName} ${jahr}`);
+    window.location.href = `mailto:${empfaenger}?subject=${betreff}`;
+  }
+}
+
+function befuelleAnwDropdowns(){
+  const mSel = document.getElementById('anwMonat');
+  const jSel = document.getElementById('anwJahr');
+  if(!mSel || mSel.options.length > 0) return;
+  const monate = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  monate.forEach((m,i)=>{
+    const o = document.createElement('option');
+    o.value = i; o.textContent = m;
+    if(i === new Date().getMonth()) o.selected = true;
+    mSel.appendChild(o);
+  });
+  const jetzt = new Date().getFullYear();
+  [jetzt-1, jetzt, jetzt+1].forEach(j=>{
+    const o = document.createElement('option');
+    o.value = j; o.textContent = j;
+    if(j === jetzt) o.selected = true;
+    jSel.appendChild(o);
+  });
+}
+
+// Anwesenheit wird pro Mitarbeiter und Tag gespeichert:
+// anwesenheit/{jahr}/{monat}/{mitarbeiterName}/{tag}
+function ladeAnwMonatsDaten(jahr, monat, callback){
+  db.ref('anwesenheit/'+jahr+'/'+monat).once('value', snap=>{
+    callback(snap.exists() ? snap.val() : {});
+  });
+}
+
+function speichereAnwTag(jahr, monat, maName, tag, wert){
+  // Mitarbeitername als Key: Sonderzeichen ersetzen
+  const maKey = maName.replace(/[.#$[\]\/]/g,'_');
+  db.ref('anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+tag).set(wert || null);
+}
+
+function getAutoWert(maName, tag, monat, jahr){
+  // Automatisch vorausfuellen: BU, Urlaub aus Antraegen
+  const d = new Date(jahr, monat, tag);
+  const we = d.getDay()===0 || d.getDay()===6;
+  const ft = istFeiertag(d);
+  const bu = istBetriebsurlaub(d);
+  const key = toKey(d);
+  if(we) return 'WE';
+  if(ft) return 'FT';
+  if(bu) return '';  // Betriebsurlaub wird in Anwesenheitsliste nicht angezeigt
+  const urlAntrag = alleAntraegeCache.find(a=>
+    a.name===maName && a.status==='genehmigt' && (a.art||'urlaub')==='urlaub'
+    && key>=a.start && key<=a.ende
+  );
+  if(urlAntrag) return 'U';
+  const souAntrag = alleAntraegeCache.find(a=>
+    a.name===maName && a.status==='genehmigt' && a.art==='sonderurlaub'
+    && key>=a.start && key<=a.ende
+  );
+  if(souAntrag) return 'SOU';
+  return '';
+}
+
+function renderAnwesenheit(){
+  const grid = document.getElementById('anwesenheitGrid');
+  if(!grid) return;
+  befuelleAnwDropdowns();
+  const monat = parseInt(document.getElementById('anwMonat').value);
+  const jahr  = parseInt(document.getElementById('anwJahr').value);
+  if(isNaN(monat) || isNaN(jahr)) return;
+
+  grid.innerHTML = '<div style="text-align:center; padding:20px; color:var(--gray-400);">Lade…</div>';
+
+  ladeAnwMonatsDaten(jahr, monat, alleGespeichert=>{
+    const tageImMonat = new Date(jahr, monat+1, 0).getDate();
+    const heute = new Date();
+    const WT = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+    const sortiert = sortiereAnwesenheit(MITARBEITER);
+
+    // Aktuelle Selektion beibehalten
+    const alteAuswahl = new Set(window._anwAuswahl || []);
+    window._anwAuswahl = alteAuswahl;
+
+    let html = '<div style="overflow-x:auto;">';
+    html += '<table style="border-collapse:separate; border-spacing:2px; font-size:11px; width:100%;" id="anwTabelle">';
+    html += '<thead><tr>';
+    // Checkbox-Spalte Header: Alle markieren
+    html += '<th style="padding:3px 4px; background:#DDDDDD; border-radius:4px; width:28px; position:sticky; left:0; z-index:3;">' +
+      '<input type="checkbox" id="anwAlleCheck" onchange="anwAlleMarkieren(this.checked)" title="Alle markieren" style="cursor:pointer;"></th>';
+    html += '<th style="text-align:left; padding:4px 8px; background:#DDDDDD; border-radius:4px; min-width:150px; font-size:11px; position:sticky; left:28px; z-index:2; white-space:nowrap;">Mitarbeiter</th>';
+    for(let t=1; t<=tageImMonat; t++){
+      const d = new Date(jahr, monat, t);
+      const we = d.getDay()===0||d.getDay()===6;
+      const ft = istFeiertag(d);
+      const isToday = d.toDateString()===heute.toDateString();
+      const bg = isToday ? '#C8102E' : (we||ft ? '#CCCCCC' : '#444444');
+      const col = isToday ? '#fff' : (we||ft ? '#888' : '#fff');
+      html += `<th style="text-align:center; padding:3px 1px; background:${bg}; color:${col}; border-radius:4px; min-width:28px; font-size:10px; font-family:Consolas,monospace; cursor:pointer;"
+        onclick="anwTagAlleSetzen(${jahr},${monat},${t})" title="Klick: alle auf diesen Tag setzen">`;
+      html += `${t}<br><span style="font-weight:400; font-size:9px;">${WT[d.getDay()]}</span></th>`;
+    }
+    html += '<th style="text-align:center; padding:3px 4px; background:#444; color:#fff; border-radius:4px; min-width:32px; font-size:10px;">ΣU</th>';
+    html += '<th style="text-align:center; padding:3px 4px; background:#444; color:#fff; border-radius:4px; min-width:36px; font-size:10px;">ΣAbw</th>';
+    html += '</tr></thead><tbody>';
+
+    sortiert.forEach(m=>{
+      const maKey = m.name.replace(/[.#$[\]\\/]/g,'_');
+      const maGespeichert = alleGespeichert[maKey] || {};
+      const isSelected = alteAuswahl.has(maKey);
+      const rowBg = isSelected ? 'background:#fffde7;' : '';
+      html += `<tr style="${rowBg}">`;
+      // Checkbox
+      html += `<td style="text-align:center; padding:0 4px; position:sticky; left:0; z-index:1; background:${isSelected?'#fffde7':'#f8f8f8'};">
+        <input type="checkbox" data-makey="${maKey}" ${isSelected?'checked':''} onchange="anwCheckboxChange(this,'${maKey}')" style="cursor:pointer;"></td>`;
+      // Name
+      html += `<td style="font-size:11.5px; font-weight:600; padding:4px 8px; background:${isSelected?'#fff9c4':'#F8F8F8'}; border-radius:4px; position:sticky; left:28px; z-index:1; white-space:nowrap; border-right:2px solid #DDD;">${m.name}</td>`;
+
+      let sumU=0, sumAbw=0;
+      for(let t=1; t<=tageImMonat; t++){
+        const d = new Date(jahr, monat, t);
+        const we = d.getDay()===0||d.getDay()===6;
+        const ft = istFeiertag(d);
+        const isToday = d.toDateString()===heute.toDateString();
+        let wert = maGespeichert[t] || '';
+        if(!wert) wert = getAutoWert(m.name, t, monat, jahr);
+        const nichtEditierbar = we || ft;
+        const bg   = nichtEditierbar ? '#F2F2F2' : (ANW_FARBEN[wert]||'#FAFAFA');
+        const txtC = nichtEditierbar ? '#CCCCCC' : (ANW_FARBEN_TEXT[wert]||'#CCCCCC');
+        const outline = isToday ? 'box-shadow:inset 0 0 0 2px var(--red);' : '';
+        if(wert==='U') sumU++;
+        else if(wert==='K'||wert==='KK'||wert==='SOU'||wert==='EZ') sumAbw++;
+        if(nichtEditierbar){
+          html += `<td style="text-align:center; background:${bg}; ${outline} border-radius:3px; height:24px; padding:0;"></td>`;
+        } else {
+          html += `<td style="text-align:center; background:${bg}; ${outline} border-radius:3px; height:24px; padding:0; cursor:pointer;"
+            title="${m.name} – ${t}.${monat+1}.${jahr}"
+            onclick="anwZelleKlick(this,${jahr},${monat},${t},'${maKey.replace(/'/g,"\\'")}','${wert}')">
+            <span style="font-size:10px; font-weight:700; color:${txtC}; font-family:Consolas,monospace; display:block; line-height:24px;">${wert||'–'}</span>
+          </td>`;
+        }
+      }
+      html += `<td style="text-align:center; background:#DDEEFF; border-radius:4px; font-weight:700; font-size:11px; font-family:Consolas,monospace; padding:2px 4px; color:#1a5276;">${sumU||'–'}</td>`;
+      html += `<td style="text-align:center; background:#FFE0E0; border-radius:4px; font-weight:700; font-size:11px; font-family:Consolas,monospace; padding:2px 4px; color:#7b1818;">${sumAbw||'–'}</td>`;
+      html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    grid.innerHTML = html;
+    anwToolbarAktualisieren();
+  });
+}
+
+/* ---- Mehrfachauswahl ---- */
+window._anwAuswahl = new Set();
+
+function anwCheckboxChange(cb, maKey){
+  if(cb.checked) window._anwAuswahl.add(maKey);
+  else window._anwAuswahl.delete(maKey);
+  anwToolbarAktualisieren();
+  // Zeilen-Highlight sofort updaten ohne re-render
+  const row = cb.closest('tr');
+  if(row) row.style.background = cb.checked ? '#fffde7' : '';
+  // "Alle"-Checkbox syncen
+  const alle = document.getElementById('anwAlleCheck');
+  if(alle){
+    const cbs = document.querySelectorAll('#anwTabelle [data-makey]');
+    alle.indeterminate = window._anwAuswahl.size>0 && window._anwAuswahl.size<cbs.length;
+    alle.checked = window._anwAuswahl.size===cbs.length && cbs.length>0;
+  }
+}
+
+function anwAlleMarkieren(checked){
+  window._anwAuswahl = new Set();
+  document.querySelectorAll('#anwTabelle [data-makey]').forEach(cb=>{
+    cb.checked = checked;
+    if(checked) window._anwAuswahl.add(cb.dataset.makey);
+    const row = cb.closest('tr');
+    if(row) row.style.background = checked ? '#fffde7' : '';
+  });
+  anwToolbarAktualisieren();
+}
+
+function anwAuswahlAufheben(){
+  anwAlleMarkieren(false);
+}
+
+function anwToolbarAktualisieren(){
+  const toolbar = document.getElementById('anwMehrfachToolbar');
+  const anzEl   = document.getElementById('anwAuswahlAnzahl');
+  const btnArea  = document.getElementById('anwMehrfachButtons');
+  if(!toolbar) return;
+  const n = window._anwAuswahl.size;
+  if(n===0){ toolbar.style.display='none'; return; }
+  toolbar.style.display='flex';
+  anzEl.textContent = n+' ausgewählt';
+  // Buttons neu aufbauen
+  btnArea.innerHTML='';
+  const optionen = ['X','U','K','KK','SOU','EZ','F',''];
+  optionen.forEach(v=>{
+    const btn = document.createElement('button');
+    btn.textContent = v||'– löschen';
+    btn.style.cssText = `padding:5px 12px; border:none; border-radius:5px; cursor:pointer;
+      font-size:12px; font-weight:700;
+      background:${v?ANW_FARBEN[v]:'#f5f5f5'}; color:${v?ANW_FARBEN_TEXT[v]:'#999'};`;
+    btn.onclick = ()=> anwMehrfachSetzen(v);
+    btnArea.appendChild(btn);
+  });
+}
+
+function anwMehrfachSetzen(wert){
+  const monat = parseInt(document.getElementById('anwMonat').value);
+  const jahr  = parseInt(document.getElementById('anwJahr').value);
+  const tageImMonat = new Date(jahr, monat+1, 0).getDate();
+  const updates = {};
+  window._anwAuswahl.forEach(maKey=>{
+    for(let t=1; t<=tageImMonat; t++){
+      const d = new Date(jahr, monat, t);
+      if(d.getDay()===0||d.getDay()===6||istFeiertag(d)) continue;
+      updates['anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+t] = wert||null;
+    }
+  });
+  db.ref('/').update(updates).then(()=>{
+    anwAuswahlAufheben();
+    renderAnwesenheit();
+  });
+}
+
+// Klick auf Spalten-Header: alle Mitarbeiter an diesem Tag setzen
+function anwTagAlleSetzen(jahr, monat, tag){
+  const d = new Date(jahr, monat, tag);
+  if(d.getDay()===0||d.getDay()===6||istFeiertag(d)) return;
+  document.querySelectorAll('.anw-popup').forEach(p=>p.remove());
+  const popup = document.createElement('div');
+  popup.className = 'anw-popup';
+  popup.style.cssText = 'position:fixed; background:#fff; border:1.5px solid #CCC; border-radius:8px;' +
+    'box-shadow:0 4px 20px rgba(0,0,0,0.15); z-index:9999; padding:10px; min-width:180px;';
+  const title = document.createElement('div');
+  title.textContent = 'Alle am '+tag+'.'+(monat+1)+'.'+jahr+' setzen:';
+  title.style.cssText='font-size:11px; font-weight:700; color:#666; margin-bottom:8px;';
+  popup.appendChild(title);
+  const btnWrap = document.createElement('div');
+  btnWrap.style.cssText='display:flex; flex-wrap:wrap; gap:4px;';
+  ['X','U','K','KK','SOU','EZ','F',''].forEach(v=>{
+    const btn = document.createElement('button');
+    btn.textContent = v||'– löschen';
+    btn.style.cssText = `padding:5px 10px; border:none; border-radius:5px; cursor:pointer; font-size:12px; font-weight:700;
+      background:${v?ANW_FARBEN[v]:'#f5f5f5'}; color:${v?ANW_FARBEN_TEXT[v]:'#999'};`;
+    btn.onclick = ()=>{
+      const sortiert = sortiereAnwesenheit(MITARBEITER);
+      const updates = {};
+      sortiert.forEach(m=>{
+        const maKey = m.name.replace(/[.#$[\]\/]/g,'_');
+        updates['anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+tag] = v||null;
+      });
+      db.ref('/').update(updates).then(()=>{ popup.remove(); renderAnwesenheit(); });
+    };
+    btnWrap.appendChild(btn);
+  });
+  popup.appendChild(btnWrap);
+  const th = event.target.closest('th');
+  const rect = th ? th.getBoundingClientRect() : {bottom:100, left:100};
+  popup.style.top  = (rect.bottom+4)+'px';
+  popup.style.left = Math.min(rect.left, window.innerWidth-220)+'px';
+  document.body.appendChild(popup);
+  const close=(e)=>{if(!popup.contains(e.target)){popup.remove();document.removeEventListener('click',close);}};
+  setTimeout(()=>document.addEventListener('click',close),10);
+}
+
+// Inline-Popup fuer einzelne Zelle
+function anwZelleKlick(td, jahr, monat, tag, maKey, aktuellerWert){
+  document.querySelectorAll('.anw-popup').forEach(p=>p.remove());
+  const popup = document.createElement('div');
+  popup.className = 'anw-popup';
+  popup.style.cssText = 'position:fixed; background:#fff; border:1.5px solid #CCC; border-radius:8px;' +
+    'box-shadow:0 4px 20px rgba(0,0,0,0.15); z-index:9999; padding:8px; display:flex; flex-wrap:wrap; gap:4px; max-width:220px;';
+  ['','X','U','K','KK','SOU','EZ','F'].forEach(v=>{
+    const btn = document.createElement('button');
+    btn.textContent = v||'–';
+    btn.style.cssText = `padding:5px 10px; border:none; border-radius:5px; cursor:pointer; font-size:12px; font-weight:700;
+      background:${v?ANW_FARBEN[v]:'#F5F5F5'}; color:${v?ANW_FARBEN_TEXT[v]:'#999'};`+
+      (v===aktuellerWert?'outline:2px solid #C8102E;':'');
+    btn.onclick=()=>{ speichereAnwTagByKey(jahr,monat,maKey,tag,v); popup.remove(); renderAnwesenheit(); };
+    popup.appendChild(btn);
+  });
+  const rect=td.getBoundingClientRect();
+  popup.style.top=(rect.bottom+4)+'px';
+  popup.style.left=Math.min(rect.left,window.innerWidth-240)+'px';
+  document.body.appendChild(popup);
+  const close=(e)=>{if(!popup.contains(e.target)&&e.target!==td){popup.remove();document.removeEventListener('click',close);}};
+  setTimeout(()=>document.addEventListener('click',close),10);
+}
+
+
+function speichereAnwTagByKey(jahr, monat, maKey, tag, wert){
+  db.ref('anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+tag).set(wert || null);
+}
+
+async function exportAnwesenheitExcel(){
+  const monat = parseInt(document.getElementById('anwMonat').value);
+  const jahr  = parseInt(document.getElementById('anwJahr').value);
+  const monate = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  const monatName = monate[monat];
+  const tageImMonat = new Date(jahr, monat+1, 0).getDate();
+
+  const snap = await db.ref('anwesenheit/'+jahr+'/'+monat).once('value');
+  const alleGespeichert = snap.exists() ? snap.val() : {};
+  const sortiert = sortiereAnwesenheit(MITARBEITER);
+
+  const kategorien = ['U','K','KK','SOU','EZ','F'];
+  const kategorieName = {U:'Urlaub',K:'Krank',KK:'Kinder-Krank',SOU:'Sonderurlaub',EZ:'Elternzeit',F:'Freistellung'};
+
+  // Summen berechnen
+  const kategorieSummen = {};
+  sortiert.forEach(m=>{
+    const maKey = m.name.replace(/[.#$[\]]/g,'_');
+    const maGes = alleGespeichert[maKey] || {};
+    const s = {U:0,K:0,KK:0,SOU:0,EZ:0,F:0};
+    for(let t=1; t<=tageImMonat; t++){
+      const d = new Date(jahr, monat, t);
+      const we = d.getDay()===0||d.getDay()===6;
+      const ft = istFeiertag(d);
+      if(we||ft) continue;
+      let wert = maGes[t] || '';
+      if(!wert) wert = getAutoWert(m.name, t, monat, jahr);
+      if(s[wert]!==undefined) s[wert]++;
+    }
+    kategorieSummen[m.name] = s;
+  });
+
+  const wb2 = XLSX.utils.book_new();
+
+  // ---- Blatt 1: Monatsraster (Wochenenden leer lassen, nur Tageszahl als Header) ----
+  const header1 = ['Mitarbeiter', 'Standort'];
+  for(let t=1; t<=tageImMonat; t++) header1.push(t);
+  header1.push(...kategorien.map(k=>'\u03A3 '+kategorieName[k]));
+  const ws1Data = [header1];
+
+  sortiert.forEach(m=>{
+    const maKey = m.name.replace(/[.#$[\]]/g,'_');
+    const maGes = alleGespeichert[maKey] || {};
+    const row = [m.name, m.standort];
+    const s = kategorieSummen[m.name];
+    for(let t=1; t<=tageImMonat; t++){
+      const d = new Date(jahr, monat, t);
+      const we = d.getDay()===0||d.getDay()===6;
+      const ft = istFeiertag(d);
+      if(we||ft){ row.push(''); continue; }
+      let wert = maGes[t] || '';
+      if(!wert) wert = getAutoWert(m.name, t, monat, jahr);
+      row.push(wert||'');
+    }
+    kategorien.forEach(k=>row.push(s[k]>0?s[k]:''));
+    ws1Data.push(row);
+  });
+
+  const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
+  ws1['!cols'] = [{wch:20},{wch:12},...Array(tageImMonat).fill({wch:3.5}),...kategorien.map(()=>({wch:10}))];
+  XLSX.utils.book_append_sheet(wb2, ws1, monatName);
+
+  // ---- Blatt 2: Zusammenfassung ----
+  const ws2Data = [['Mitarbeiter','Standort',...kategorien.map(k=>kategorieName[k])]];
+  sortiert.forEach(m=>{
+    const s = kategorieSummen[m.name];
+    ws2Data.push([m.name, m.standort, ...kategorien.map(k=>s[k]>0?s[k]:'')]);
+  });
+  ws2Data.push([]);
+  const gesamtRow = ['GESAMT',''];
+  kategorien.forEach(k=>{ const t=sortiert.reduce((a,m)=>a+(kategorieSummen[m.name][k]||0),0); gesamtRow.push(t>0?t:''); });
+  ws2Data.push(gesamtRow);
+  const ws2 = XLSX.utils.aoa_to_sheet(ws2Data);
+  ws2['!cols'] = [{wch:20},{wch:12},...kategorien.map(()=>({wch:14}))];
+  XLSX.utils.book_append_sheet(wb2, ws2, 'Zusammenfassung');
+
+  // ---- Je Kategorie ein Blatt, NUR wenn mindestens 1 Eintrag ----
+  kategorien.forEach(k=>{
+    const hat = sortiert.some(m=>(kategorieSummen[m.name][k]||0)>0);
+    if(!hat) return;
+    const wsKData = [['Mitarbeiter','Standort',kategorieName[k]+' (Tage)']];
+    sortiert.forEach(m=>{ const n=kategorieSummen[m.name][k]||0; if(n>0) wsKData.push([m.name, m.standort, n]); });
+    const wsK = XLSX.utils.aoa_to_sheet(wsKData);
+    wsK['!cols'] = [{wch:20},{wch:12},{wch:15}];
+    XLSX.utils.book_append_sheet(wb2, wsK, kategorieName[k]);
+  });
+
+  XLSX.writeFile(wb2, 'Anwesenheitsliste_'+monatName+'_'+jahr+'.xlsx');
+
+  const betreff = encodeURIComponent('Anwesenheitsliste '+monatName+' '+jahr);
+  const body = encodeURIComponent('Hallo Pascal,\n\nanbei die Anwesenheitsliste für '+monatName+' '+jahr+'.\n(Bitte die Excel-Datei als Anhang einfügen)\n\nViele Grüße\nAnette Busemann');
+  setTimeout(()=>{ window.location.href = `mailto:grisail@rudolf-hilgenroth.de?subject=${betreff}&body=${body}`; }, 800);
+}
+
 </script>
 </body>
 </html>
