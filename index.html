@@ -1432,6 +1432,14 @@ async function submitAntrag(){
 
   try{
     await db.ref('antraege').push(antrag);
+
+    // Push-Benachrichtigung an Admin(s)
+    const zeitraum = formatDatum(start) + (start!==ende ? '–'+formatDatum(ende) : '');
+    const artTxt = art==='sonderurlaub' ? 'Sonderurlaub' : 'Urlaub';
+    const erstellerHinweis = istFuerAnderen ? ' (eingetragen von '+(currentProfile?currentProfile.name:currentUser.email)+')' : '';
+    const kurztext = zielName+' hat '+artTxt+' beantragt: '+zeitraum+' ('+tage.toString().replace('.',',')+' Tag(e))'+erstellerHinweis;
+    sendeNtfy('🆕 Neuer Urlaubsantrag', kurztext, 'default');
+
     const ok = document.getElementById('antragSuccess');
     ok.textContent = (art==='sonderurlaub' ? 'Sonderurlaubsantrag' : 'Antrag') + ' erfolgreich gestellt (' + tage.toString().replace('.',',') + ' Tag(e)). Status: offen.';
     ok.classList.remove('hidden');
