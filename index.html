@@ -2433,16 +2433,18 @@ async function sendeNtfy(titel, nachricht, prio, topicOverride){
   const topic = topicOverride || ntfyTopic;
   if(!topic) return false;
   try{
-    // HTTP-Header duerfen laut Browser-Spezifikation keine Emojis/Sonderzeichen (nur ISO-8859-1).
-    // ntfy.sh akzeptiert dafuer URL-kodierte Header-Werte (RFC-konform).
-    await fetch('https://ntfy.sh/'+topic, {
+    // HTTP-Header duerfen laut Browser-Spezifikation keine Emojis/Umlaute (nur ISO-8859-1) -
+    // und ntfy dekodiert einfach percent-encodierte Header NICHT automatisch zurueck.
+    // Loesung laut ntfy-Doku: Titel/Priority/Tags als URL-Query-Parameter statt als Header
+    // uebergeben - die werden korrekt UTF-8-dekodiert angezeigt.
+    const params = new URLSearchParams({
+      title: titel,
+      priority: prio || 'default',
+      tags: 'calendar,office'
+    });
+    await fetch('https://ntfy.sh/'+topic+'?'+params.toString(), {
       method:'POST',
-      body: nachricht,
-      headers:{
-        'Title': encodeURIComponent(titel),
-        'Priority': prio || 'default',
-        'Tags': 'calendar,office'
-      }
+      body: nachricht
     });
     return true;
   }catch(err){
