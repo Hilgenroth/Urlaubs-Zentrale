@@ -3328,10 +3328,6 @@ async function exportAnwesenheitExcel(){
   });
 
   XLSX.writeFile(wb2, 'Anwesenheitsliste_'+monatName+'_'+jahr+'.xlsx');
-
-  const betreff = encodeURIComponent('Anwesenheitsliste '+monatName+' '+jahr);
-  const body = encodeURIComponent('Hallo Pascal,\n\nanbei die Anwesenheitsliste für '+monatName+' '+jahr+'.\n(Bitte die Excel-Datei als Anhang einfügen)\n\nViele Grüße\nAnette Busemann');
-  setTimeout(()=>{ window.location.href = `mailto:grisail@rudolf-hilgenroth.de?subject=${betreff}&body=${body}`; }, 800);
 }
 
 </script>
