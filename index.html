@@ -2739,15 +2739,16 @@ async function anwMailSenden(){
       if(we||ft){
         tbl += `<td style="background:#F0F0F0; text-align:center; color:#CCC; font-size:9px;"></td>`;
       } else {
-        const bg = MAIL_BG[wert]||'#FFFFFF';
-        const fg = MAIL_FG[wert]||'#CCCCCC';
-        if(wert==='U') sumU++;
-        else if(wert==='K'||wert==='KK'||wert==='SOU'||wert==='EZ') sumAbw++;
-        tbl += `<td style="background:${bg}; color:${fg}; text-align:center; font-weight:bold; font-size:10px; padding:2px;">${wert||''}</td>`;
+        const basis = anwBasisTyp(wert);
+        const bg = MAIL_BG[basis]||'#FFFFFF';
+        const fg = MAIL_FG[basis]||'#CCCCCC';
+        if(basis==='U') sumU += anwZahlenwert(wert);
+        else if(basis==='K'||basis==='KK'||basis==='SOU'||basis==='EZ') sumAbw += anwZahlenwert(wert);
+        tbl += `<td style="background:${bg}; color:${fg}; text-align:center; font-weight:bold; font-size:9px; padding:2px;">${wert||''}</td>`;
       }
     }
-    tbl += `<td style="background:#DDEEFF; color:#1a5276; text-align:center; font-weight:bold; padding:3px;">${sumU||''}</td>`;
-    tbl += `<td style="background:#FFE0E0; color:#7b1818; text-align:center; font-weight:bold; padding:3px;">${sumAbw||''}</td>`;
+    tbl += `<td style="background:#DDEEFF; color:#1a5276; text-align:center; font-weight:bold; padding:3px;">${sumU?String(sumU).replace('.',','):''}</td>`;
+    tbl += `<td style="background:#FFE0E0; color:#7b1818; text-align:center; font-weight:bold; padding:3px;">${sumAbw?String(sumAbw).replace('.',','):''}</td>`;
     tbl += '</tr>';
   });
   tbl += '</table>';
@@ -2790,7 +2791,7 @@ function istFesterUrlaub(maName, tag, monat, jahr){
   // Verhindert leere, gesperrte Zellen (z.B. bei Betriebsurlaub oder Nicht-Arbeitstagen
   // von Teilzeitkraeften wie Miederhoff Di-Do oder Husteden Mo-Do).
   const auto = getAutoWert(maName, tag, monat, jahr);
-  return auto === 'U' || auto === 'SOU';
+  return auto === 'U' || auto === 'SOU' || auto === 'U½' || auto === 'SOU½';
 }
 
 
@@ -2886,8 +2887,16 @@ function speichereAnwTag(jahr, monat, maName, tag, wert){
   db.ref('anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+tag).set(wert || null);
 }
 
+// Prueft ob ein Tag innerhalb eines Antrags ein halber Tag ist (Start-/Endtag mit Haken)
+function istHalberTagImAntrag(antrag, key){
+  const istStart = key===antrag.start, istEnde = key===antrag.ende;
+  if(istStart && antrag.halbTagStart) return true;
+  if(istEnde && antrag.halbTagEnde && !(istStart && antrag.halbTagStart)) return true;
+  return false;
+}
+
 function getAutoWert(maName, tag, monat, jahr){
-  // Automatisch vorausfuellen: BU, Urlaub aus Antraegen
+  // Automatisch vorausfuellen: Urlaub/Sonderurlaub aus Antraegen, inkl. halber Tage (Suffix '½')
   const d = new Date(jahr, monat, tag);
   const we = d.getDay()===0 || d.getDay()===6;
   const ft = istFeiertag(d);
@@ -2903,14 +2912,18 @@ function getAutoWert(maName, tag, monat, jahr){
     a.name===maName && a.status==='genehmigt' && (a.art||'urlaub')==='urlaub'
     && key>=a.start && key<=a.ende
   );
-  if(urlAntrag) return 'U';
+  if(urlAntrag) return istHalberTagImAntrag(urlAntrag, key) ? 'U½' : 'U';
   const souAntrag = alleAntraegeCache.find(a=>
     a.name===maName && a.status==='genehmigt' && a.art==='sonderurlaub'
     && key>=a.start && key<=a.ende
   );
-  if(souAntrag) return 'SOU';
+  if(souAntrag) return istHalberTagImAntrag(souAntrag, key) ? 'SOU½' : 'SOU';
   return '';
 }
+
+// Ermittelt den Basistyp (ohne Halbtag-Suffix) fuer Farben/Kategorien, und den Zahlenwert (1 oder 0.5)
+function anwBasisTyp(wert){ return (wert||'').replace('½',''); }
+function anwZahlenwert(wert){ return (wert||'').includes('½') ? 0.5 : 1; }
 
 function renderAnwesenheit(){
   const grid = document.getElementById('anwesenheitGrid');
@@ -2976,19 +2989,20 @@ function renderAnwesenheit(){
         let wert = maGespeichert[t] || '';
         if(festerUrlaub) wert = getAutoWert(m.name, t, monat, jahr);  // Urlaub hat Vorrang, nicht ueberschreibbar
         else if(!wert) wert = getAutoWert(m.name, t, monat, jahr);
+        const basis = anwBasisTyp(wert);
         const nichtEditierbar = we || ft || festerUrlaub;
         // Wochenende/Feiertag grau, Urlaub in Urlaubsfarbe (deutlich sichtbar!), Rest normal
-        const bg   = (we||ft) ? '#F2F2F2' : (ANW_FARBEN[wert]||'#FAFAFA');
-        const txtC = (we||ft) ? '#CCCCCC' : (ANW_FARBEN_TEXT[wert]||'#CCCCCC');
+        const bg   = (we||ft) ? '#F2F2F2' : (ANW_FARBEN[basis]||'#FAFAFA');
+        const txtC = (we||ft) ? '#CCCCCC' : (ANW_FARBEN_TEXT[basis]||'#CCCCCC');
         const outline = isToday ? 'box-shadow:inset 0 0 0 2px var(--red);' : '';
-        if(wert==='U') sumU++;
-        else if(wert==='K'||wert==='KK'||wert==='SOU'||wert==='EZ') sumAbw++;
+        if(basis==='U') sumU += anwZahlenwert(wert);
+        else if(basis==='K'||basis==='KK'||basis==='SOU'||basis==='EZ') sumAbw += anwZahlenwert(wert);
         if(nichtEditierbar){
           const anzeige = (we||ft) ? '' : wert;
-          const titel = festerUrlaub ? `${m.name} – ${t}.${monat+1}.${jahr} · ${wert==='SOU'?'Sonderurlaub':'Urlaub'} (fest aus Antrag, nicht änderbar)` : '';
+          const titel = festerUrlaub ? `${m.name} – ${t}.${monat+1}.${jahr} · ${basis==='SOU'?'Sonderurlaub':'Urlaub'}${wert.includes('½')?' (halber Tag)':''} (fest aus Antrag, nicht änderbar)` : '';
           const lockStyle = festerUrlaub ? 'border:2px solid #1a5276;' : '';
           html += `<td title="${titel}" style="text-align:center; background:${bg}; ${outline}${lockStyle} border-radius:3px; height:24px; padding:0;
-            font-size:10px; font-weight:700; color:${txtC}; font-family:Consolas,monospace; cursor:not-allowed;">${anzeige}</td>`;
+            font-size:9px; font-weight:700; color:${txtC}; font-family:Consolas,monospace; cursor:not-allowed;">${anzeige}</td>`;
         } else {
           html += `<td style="text-align:center; background:${bg}; ${outline} border-radius:3px; height:24px; padding:0; cursor:pointer;"
             title="${m.name} – ${t}.${monat+1}.${jahr}"
@@ -2997,8 +3011,8 @@ function renderAnwesenheit(){
           </td>`;
         }
       }
-      html += `<td style="text-align:center; background:#DDEEFF; border-radius:4px; font-weight:700; font-size:11px; font-family:Consolas,monospace; padding:2px 4px; color:#1a5276;">${sumU||'–'}</td>`;
-      html += `<td style="text-align:center; background:#FFE0E0; border-radius:4px; font-weight:700; font-size:11px; font-family:Consolas,monospace; padding:2px 4px; color:#7b1818;">${sumAbw||'–'}</td>`;
+      html += `<td style="text-align:center; background:#DDEEFF; border-radius:4px; font-weight:700; font-size:11px; font-family:Consolas,monospace; padding:2px 4px; color:#1a5276;">${sumU?String(sumU).replace('.',','):'–'}</td>`;
+      html += `<td style="text-align:center; background:#FFE0E0; border-radius:4px; font-weight:700; font-size:11px; font-family:Consolas,monospace; padding:2px 4px; color:#7b1818;">${sumAbw?String(sumAbw).replace('.',','):'–'}</td>`;
       html += '</tr>';
     });
 
@@ -3227,7 +3241,7 @@ async function exportAnwesenheitExcel(){
   const kategorien = ['U','K','KK','SOU','EZ','F'];
   const kategorieName = {U:'Urlaub',K:'Krank',KK:'Kinder-Krank',SOU:'Sonderurlaub',EZ:'Elternzeit',F:'Freistellung'};
 
-  // Summen berechnen
+  // Summen berechnen (Basistyp, mit halben Tagen als 0.5)
   const kategorieSummen = {};
   sortiert.forEach(m=>{
     const maKey = m.name.replace(/[.#$[\]]/g,'_');
@@ -3240,7 +3254,8 @@ async function exportAnwesenheitExcel(){
       if(we||ft) continue;
       let wert = maGes[t] || '';
       if(!wert) wert = getAutoWert(m.name, t, monat, jahr);
-      if(s[wert]!==undefined) s[wert]++;
+      const basis = anwBasisTyp(wert);
+      if(s[basis]!==undefined) s[basis] += anwZahlenwert(wert);
     }
     kategorieSummen[m.name] = s;
   });
