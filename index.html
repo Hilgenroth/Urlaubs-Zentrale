@@ -11,6 +11,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
 <!-- SheetJS fuer Excel-Export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- jsPDF fuer farbigen PDF-Export der Anwesenheitsliste -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
 <style>
   :root{
@@ -602,7 +605,7 @@
             <select id="anwMonat" onchange="renderAnwesenheit()" style="width:auto;"></select>
             <select id="anwJahr" onchange="renderAnwesenheit()" style="width:auto;"></select>
             <button class="btn-primary btn-small" onclick="anwMailSenden()">📧 Als Mail senden</button>
-            <button class="btn-secondary btn-small" onclick="exportAnwesenheitExcel()">📥 Excel-Export</button>
+            <button class="btn-secondary btn-small" onclick="exportAnwesenheitPDF()">📄 PDF-Export</button>
           </div>
         </h2>
         <!-- Empfänger-Einstellung -->
@@ -2742,13 +2745,15 @@ async function anwMailSenden(){
     tbl += `<tr style="background:${rowBg};">`;
     tbl += `<td style="padding:4px 8px; font-weight:bold; white-space:nowrap; font-size:11px;">${m.name}</td>`;
     let sumU=0, sumAbw=0;
+    const arbeitstageM = getArbeitstage(m.name);
     for(let t=1; t<=tageImMonat; t++){
       const d = new Date(jahr, monat, t);
       const we = d.getDay()===0||d.getDay()===6;
       const ft = istFeiertag(d);
+      const keinArbeitstag = !we && !ft && !arbeitstageM.includes(d.getDay());
       let wert = maGes[t] || '';
-      if(!wert && !we && !ft) wert = getAutoWert(m.name, t, monat, jahr);
-      if(we||ft){
+      if(!wert && !we && !ft && !keinArbeitstag) wert = getAutoWert(m.name, t, monat, jahr);
+      if(we||ft||keinArbeitstag){
         tbl += `<td style="background:#F0F0F0; text-align:center; color:#CCC; font-size:9px;"></td>`;
       } else {
         const basis = anwBasisTyp(wert);
@@ -2992,26 +2997,30 @@ function renderAnwesenheit(){
       html += `<td style="font-size:11.5px; font-weight:600; padding:4px 8px; background:${isSelected?'#fff9c4':'#F8F8F8'}; border-radius:4px; position:sticky; left:28px; z-index:1; white-space:nowrap; border-right:2px solid #DDD;">${m.name}</td>`;
 
       let sumU=0, sumAbw=0;
+      const arbeitstageM = getArbeitstage(m.name);
       for(let t=1; t<=tageImMonat; t++){
         const d = new Date(jahr, monat, t);
         const we = d.getDay()===0||d.getDay()===6;
         const ft = istFeiertag(d);
+        const keinArbeitstag = !we && !ft && !arbeitstageM.includes(d.getDay());
         const isToday = d.toDateString()===heute.toDateString();
         const festerUrlaub = istFesterUrlaub(m.name, t, monat, jahr);
         let wert = maGespeichert[t] || '';
         if(festerUrlaub) wert = getAutoWert(m.name, t, monat, jahr);  // Urlaub hat Vorrang, nicht ueberschreibbar
-        else if(!wert) wert = getAutoWert(m.name, t, monat, jahr);
+        else if(!wert && !keinArbeitstag) wert = getAutoWert(m.name, t, monat, jahr);
         const basis = anwBasisTyp(wert);
-        const nichtEditierbar = we || ft || festerUrlaub;
-        // Wochenende/Feiertag grau, Urlaub in Urlaubsfarbe (deutlich sichtbar!), Rest normal
-        const bg   = (we||ft) ? '#F2F2F2' : (ANW_FARBEN[basis]||'#FAFAFA');
-        const txtC = (we||ft) ? '#CCCCCC' : (ANW_FARBEN_TEXT[basis]||'#CCCCCC');
+        const nichtEditierbar = we || ft || festerUrlaub || keinArbeitstag;
+        // Wochenende/Feiertag/kein Arbeitstag grau, Urlaub in Urlaubsfarbe (deutlich sichtbar!), Rest normal
+        const bg   = (we||ft||keinArbeitstag) ? '#F2F2F2' : (ANW_FARBEN[basis]||'#FAFAFA');
+        const txtC = (we||ft||keinArbeitstag) ? '#CCCCCC' : (ANW_FARBEN_TEXT[basis]||'#CCCCCC');
         const outline = isToday ? 'box-shadow:inset 0 0 0 2px var(--red);' : '';
         if(basis==='U') sumU += anwZahlenwert(wert);
         else if(basis==='K'||basis==='KK'||basis==='SOU'||basis==='EZ') sumAbw += anwZahlenwert(wert);
         if(nichtEditierbar){
-          const anzeige = (we||ft) ? '' : wert;
-          const titel = festerUrlaub ? `${m.name} – ${t}.${monat+1}.${jahr} · ${basis==='SOU'?'Sonderurlaub':'Urlaub'}${wert.includes('½')?' (halber Tag)':''} (fest aus Antrag, nicht änderbar)` : '';
+          const anzeige = (we||ft||keinArbeitstag) ? '' : wert;
+          const titel = festerUrlaub
+            ? `${m.name} – ${t}.${monat+1}.${jahr} · ${basis==='SOU'?'Sonderurlaub':'Urlaub'}${wert.includes('½')?' (halber Tag)':''} (fest aus Antrag, nicht änderbar)`
+            : (keinArbeitstag ? `${m.name} arbeitet an diesem Wochentag nicht` : '');
           const lockStyle = festerUrlaub ? 'border:2px solid #1a5276;' : '';
           html += `<td title="${titel}" style="text-align:center; background:${bg}; ${outline}${lockStyle} border-radius:3px; height:24px; padding:0;
             font-size:9px; font-weight:700; color:${txtC}; font-family:Consolas,monospace; cursor:not-allowed;">${anzeige}</td>`;
@@ -3125,17 +3134,24 @@ function anwMehrfachSetzen(wert){
   const updates = {};
   let uebersprungen = 0;
   window._anwAuswahl.forEach(maKey=>{
-    // Namen zum maKey finden, um Urlaub zu pruefen
+    // Namen zum maKey finden, um Urlaub und Arbeitstage zu pruefen
     const ma = MITARBEITER.find(m=>m.name.replace(/[.#$[\]\/]/g,'_')===maKey);
     if(ma && istFesterUrlaub(ma.name, tag, monat, jahr)){
       uebersprungen++;
       return;  // Urlaub nicht ueberschreiben
     }
+    if(ma){
+      const d = new Date(jahr, monat, tag);
+      if(!getArbeitstage(ma.name).includes(d.getDay())){
+        uebersprungen++;
+        return;  // kein Arbeitstag fuer diesen Mitarbeiter
+      }
+    }
     updates['anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+tag] = wert||null;
   });
 
   if(Object.keys(updates).length===0){
-    alert('Alle ausgewählten Mitarbeiter haben an diesem Tag Urlaub – nichts geändert.');
+    alert('Alle ausgewählten Mitarbeiter haben an diesem Tag Urlaub oder arbeiten nicht – nichts geändert.');
     return;
   }
 
@@ -3178,6 +3194,7 @@ function anwTagAlleSetzen(jahr, monat, tag){
       let uebersprungen = 0;
       sortiert.forEach(m=>{
         if(istFesterUrlaub(m.name, tag, monat, jahr)){ uebersprungen++; return; }
+        if(!getArbeitstage(m.name).includes(d.getDay())){ uebersprungen++; return; }
         const maKey = m.name.replace(/[.#$[\]\/]/g,'_');
         updates['anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+tag] = v||null;
       });
@@ -3186,7 +3203,7 @@ function anwTagAlleSetzen(jahr, monat, tag){
         db.ref('/').update(updates).then(()=>{
           popup.remove();
           renderAnwesenheit();
-          if(uebersprungen>0) setTimeout(()=>alert(uebersprungen+' Mitarbeiter übersprungen (Urlaub bleibt bestehen).'), 200);
+          if(uebersprungen>0) setTimeout(()=>alert(uebersprungen+' Mitarbeiter übersprungen (Urlaub fest / kein Arbeitstag).'), 200);
         });
       });
     };
@@ -3239,12 +3256,19 @@ function speichereAnwTagByKey(jahr, monat, maKey, tag, wert){
   db.ref('anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+tag).set(wert || null);
 }
 
-async function exportAnwesenheitExcel(){
+function anwHexZuRgb(hex){
+  hex = hex.replace('#','');
+  return [parseInt(hex.substring(0,2),16), parseInt(hex.substring(2,4),16), parseInt(hex.substring(4,6),16)];
+}
+
+async function exportAnwesenheitPDF(){
+  const { jsPDF } = window.jspdf;
   const monat = parseInt(document.getElementById('anwMonat').value);
   const jahr  = parseInt(document.getElementById('anwJahr').value);
   const monate = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
   const monatName = monate[monat];
   const tageImMonat = new Date(jahr, monat+1, 0).getDate();
+  const WT = ['So','Mo','Di','Mi','Do','Fr','Sa'];
 
   const snap = await db.ref('anwesenheit/'+jahr+'/'+monat).once('value');
   const alleGespeichert = snap.exists() ? snap.val() : {};
@@ -3253,81 +3277,139 @@ async function exportAnwesenheitExcel(){
   const kategorien = ['U','K','KK','SOU','EZ','F'];
   const kategorieName = {U:'Urlaub',K:'Krank',KK:'Kinder-Krank',SOU:'Sonderurlaub',EZ:'Elternzeit',F:'Freistellung'};
 
-  // Summen berechnen (Basistyp, mit halben Tagen als 0.5)
+  // Zellwerte + Summen vorab berechnen
+  const zellenProZeile = []; // zellenProZeile[zeile][tag] = {anzeige, colorKey}
   const kategorieSummen = {};
   sortiert.forEach(m=>{
     const maKey = m.name.replace(/[.#$[\]]/g,'_');
     const maGes = alleGespeichert[maKey] || {};
     const s = {U:0,K:0,KK:0,SOU:0,EZ:0,F:0};
+    const zeile = {};
+    const arbeitstageM = getArbeitstage(m.name);
     for(let t=1; t<=tageImMonat; t++){
       const d = new Date(jahr, monat, t);
       const we = d.getDay()===0||d.getDay()===6;
       const ft = istFeiertag(d);
-      if(we||ft) continue;
+      const keinArbeitstag = !we && !ft && !arbeitstageM.includes(d.getDay());
+      if(we||ft){ zeile[t] = {anzeige:'', colorKey: we?'WE':'FT'}; continue; }
+      if(keinArbeitstag){ zeile[t] = {anzeige:'', colorKey:'NA'}; continue; }
       let wert = maGes[t] || '';
       if(!wert) wert = getAutoWert(m.name, t, monat, jahr);
       const basis = anwBasisTyp(wert);
       if(s[basis]!==undefined) s[basis] += anwZahlenwert(wert);
+      zeile[t] = {anzeige: wert||'', colorKey: basis||''};
     }
+    zellenProZeile.push(zeile);
     kategorieSummen[m.name] = s;
   });
 
-  const wb2 = XLSX.utils.book_new();
+  // Nur Kategorien anzeigen, bei denen im Monat mindestens 1 Tag angefallen ist
+  const kategorienSichtbar = kategorien.filter(k =>
+    sortiert.some(m => (kategorieSummen[m.name][k]||0) > 0)
+  );
 
-  // ---- Blatt 1: Monatsraster (Wochenenden leer lassen, nur Tageszahl als Header) ----
-  const header1 = ['Mitarbeiter', 'Standort'];
-  for(let t=1; t<=tageImMonat; t++) header1.push(t);
-  header1.push(...kategorien.map(k=>'\u03A3 '+kategorieName[k]));
-  const ws1Data = [header1];
+  // ---- PDF aufbauen ----
+  const doc = new jsPDF({orientation:'landscape', unit:'mm', format:'a4'});
+  const pageW = doc.internal.pageSize.getWidth();
 
-  sortiert.forEach(m=>{
-    const maKey = m.name.replace(/[.#$[\]]/g,'_');
-    const maGes = alleGespeichert[maKey] || {};
+  // Titel-Balken
+  doc.setFillColor(200,16,46);
+  doc.rect(0, 0, pageW, 14, 'F');
+  doc.setTextColor(255,255,255);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(14);
+  doc.text('Anwesenheitsliste '+monatName+' '+jahr, 8, 9.5);
+  doc.setFontSize(9);
+  doc.setFont('helvetica','normal');
+  doc.text('Rudolf Hilgenroth GmbH & Co. KG', pageW-8, 9.5, {align:'right'});
+
+  // Tabellen-Header: Mitarbeiter | Standort | Tag 1..N | ausgeschriebene Summenspalten (nur relevante)
+  const head = [['Mitarbeiter','Standort',
+    ...Array.from({length:tageImMonat},(_,i)=>{
+      const d = new Date(jahr, monat, i+1);
+      return (i+1)+'\n'+WT[d.getDay()];
+    }),
+    ...kategorienSichtbar.map(k=>kategorieName[k])
+  ]];
+
+  const body = sortiert.map((m, ri)=>{
     const row = [m.name, m.standort];
+    for(let t=1; t<=tageImMonat; t++) row.push(zellenProZeile[ri][t].anzeige);
     const s = kategorieSummen[m.name];
-    for(let t=1; t<=tageImMonat; t++){
-      const d = new Date(jahr, monat, t);
-      const we = d.getDay()===0||d.getDay()===6;
-      const ft = istFeiertag(d);
-      if(we||ft){ row.push(''); continue; }
-      let wert = maGes[t] || '';
-      if(!wert) wert = getAutoWert(m.name, t, monat, jahr);
-      row.push(wert||'');
+    kategorienSichtbar.forEach(k=> row.push(s[k]>0 ? String(s[k]).replace('.',',') : ''));
+    return row;
+  });
+
+  const FARBEN = {
+    X:  '#C6EFCE', U:  '#DDEEFF', K:  '#FFE0E0', KK: '#FFEB9C',
+    SOU:'#FFD966', EZ: '#E8D5F5', F:  '#EBEBEB', WE: '#F5F5F5', FT: '#E8E8E8', NA: '#EFEFEF'
+  };
+  const TEXTFARBEN = {
+    X:'#1a5c2a', U:'#1a5276', K:'#7b1818', KK:'#7d5a00',
+    SOU:'#7d4e00', EZ:'#6a1b9a', F:'#555555', WE:'#bbbbbb', FT:'#999999', NA:'#cccccc'
+  };
+  const KAT_FARBEN = {U:'#DDEEFF',K:'#FFE0E0',KK:'#FFEB9C',SOU:'#FFD966',EZ:'#E8D5F5',F:'#EBEBEB'};
+
+  const nameColW = 32, standortColW = 16, sumColW = 16;
+  const restBreite = pageW - 16 - nameColW - standortColW - (sumColW*kategorienSichtbar.length);
+  const tagColW = Math.max(4.2, restBreite / tageImMonat);
+
+  const columnStyles = {0:{cellWidth:nameColW, halign:'left'}, 1:{cellWidth:standortColW, halign:'left'}};
+  for(let i=0;i<tageImMonat;i++) columnStyles[2+i] = {cellWidth:tagColW};
+  for(let i=0;i<kategorienSichtbar.length;i++) columnStyles[2+tageImMonat+i] = {cellWidth:sumColW};
+
+  doc.autoTable({
+    head, body,
+    startY: 18,
+    theme: 'grid',
+    styles:{ fontSize: tageImMonat>27?5.5:6.5, cellPadding:0.8, halign:'center', valign:'middle', lineColor:[210,210,210], lineWidth:0.1 },
+    headStyles:{ fillColor:[68,68,68], textColor:255, fontSize:5.5, fontStyle:'bold' },
+    columnStyles,
+    margin:{left:8, right:8},
+    didParseCell: (data)=>{
+      if(data.section!=='body') return;
+      const col = data.column.index;
+      const ri  = data.row.index;
+      if(col>=2 && col<2+tageImMonat){
+        const t = col-1; // Tag-Nummer
+        const info = zellenProZeile[ri][t];
+        const bg = FARBEN[info.colorKey] || '#FFFFFF';
+        const fg = TEXTFARBEN[info.colorKey] || '#333333';
+        data.cell.styles.fillColor = anwHexZuRgb(bg);
+        data.cell.styles.textColor = anwHexZuRgb(fg);
+        data.cell.styles.fontStyle = 'bold';
+      } else if(col>=2+tageImMonat){
+        const kat = kategorienSichtbar[col-2-tageImMonat];
+        if(data.cell.raw){
+          data.cell.styles.fillColor = anwHexZuRgb(KAT_FARBEN[kat]);
+          data.cell.styles.fontStyle = 'bold';
+        }
+      }
     }
-    kategorien.forEach(k=>row.push(s[k]>0?s[k]:''));
-    ws1Data.push(row);
   });
 
-  const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
-  ws1['!cols'] = [{wch:20},{wch:12},...Array(tageImMonat).fill({wch:3.5}),...kategorien.map(()=>({wch:10}))];
-  XLSX.utils.book_append_sheet(wb2, ws1, monatName);
-
-  // ---- Blatt 2: Zusammenfassung ----
-  const ws2Data = [['Mitarbeiter','Standort',...kategorien.map(k=>kategorieName[k])]];
-  sortiert.forEach(m=>{
-    const s = kategorieSummen[m.name];
-    ws2Data.push([m.name, m.standort, ...kategorien.map(k=>s[k]>0?s[k]:'')]);
-  });
-  ws2Data.push([]);
-  const gesamtRow = ['GESAMT',''];
-  kategorien.forEach(k=>{ const t=sortiert.reduce((a,m)=>a+(kategorieSummen[m.name][k]||0),0); gesamtRow.push(t>0?t:''); });
-  ws2Data.push(gesamtRow);
-  const ws2 = XLSX.utils.aoa_to_sheet(ws2Data);
-  ws2['!cols'] = [{wch:20},{wch:12},...kategorien.map(()=>({wch:14}))];
-  XLSX.utils.book_append_sheet(wb2, ws2, 'Zusammenfassung');
-
-  // ---- Je Kategorie ein Blatt, NUR wenn mindestens 1 Eintrag ----
-  kategorien.forEach(k=>{
-    const hat = sortiert.some(m=>(kategorieSummen[m.name][k]||0)>0);
-    if(!hat) return;
-    const wsKData = [['Mitarbeiter','Standort',kategorieName[k]+' (Tage)']];
-    sortiert.forEach(m=>{ const n=kategorieSummen[m.name][k]||0; if(n>0) wsKData.push([m.name, m.standort, n]); });
-    const wsK = XLSX.utils.aoa_to_sheet(wsKData);
-    wsK['!cols'] = [{wch:20},{wch:12},{wch:15}];
-    XLSX.utils.book_append_sheet(wb2, wsK, kategorieName[k]);
+  // Legende unten (mit fester Breite pro Eintrag statt Zeichenlaenge, damit nichts gequetscht wird)
+  let legY = doc.lastAutoTable.finalY + 7;
+  if(legY > doc.internal.pageSize.getHeight() - 12){ doc.addPage('a4','landscape'); legY = 15; }
+  const legende = [
+    ['X','anwesend',FARBEN.X],['U','Urlaub',FARBEN.U],['K','krank',FARBEN.K],
+    ['KK','Kinder-krank',FARBEN.KK],['SOU','Sonderurlaub',FARBEN.SOU],
+    ['EZ','Elternzeit',FARBEN.EZ],['F','Freistellung',FARBEN.F]
+  ];
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica','normal');
+  const legEintragBreite = (pageW - 16) / legende.length;
+  legende.forEach(([k,txt,farbe], idx)=>{
+    const lx = 8 + idx*legEintragBreite;
+    const rgb = anwHexZuRgb(farbe);
+    doc.setFillColor(rgb[0],rgb[1],rgb[2]);
+    doc.setDrawColor(200,200,200);
+    doc.rect(lx, legY-3.2, 4.5, 4.5, 'FD');
+    doc.setTextColor(80,80,80);
+    doc.text(k+' = '+txt, lx+6.5, legY);
   });
 
-  XLSX.writeFile(wb2, 'Anwesenheitsliste_'+monatName+'_'+jahr+'.xlsx');
+  doc.save('Anwesenheitsliste_'+monatName+'_'+jahr+'.pdf');
 }
 
 </script>
