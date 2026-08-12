@@ -2425,11 +2425,13 @@ async function sendeNtfy(titel, nachricht, prio, topicOverride){
   const topic = topicOverride || ntfyTopic;
   if(!topic) return false;
   try{
+    // HTTP-Header duerfen laut Browser-Spezifikation keine Emojis/Sonderzeichen (nur ISO-8859-1).
+    // ntfy.sh akzeptiert dafuer URL-kodierte Header-Werte (RFC-konform).
     await fetch('https://ntfy.sh/'+topic, {
       method:'POST',
       body: nachricht,
       headers:{
-        'Title': titel,
+        'Title': encodeURIComponent(titel),
         'Priority': prio || 'default',
         'Tags': 'calendar,office'
       }
