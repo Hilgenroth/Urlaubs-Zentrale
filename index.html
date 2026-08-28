@@ -554,6 +554,8 @@
           <span class="val mono" id="tagePreviewVal">0</span>
         </div>
 
+        <div id="antragKonfliktHinweis" class="hidden" style="margin-top:12px; padding:11px 14px; background:#fff8e1; border:1.5px solid #f0c040; border-radius:8px; font-size:13px; color:#7d5a00;"></div>
+
         <button class="btn-primary" style="margin-top:18px;" onclick="submitAntrag()">Antrag absenden</button>
         <div id="antragError" class="error-msg hidden"></div>
         <div id="antragSuccess" class="success-msg hidden"></div>
@@ -633,16 +635,7 @@
           <button class="btn-secondary btn-small" onclick="anwAuswahlAufheben()">✕ Auswahl aufheben</button>
         </div>
         <div id="anwesenheitGrid"></div>
-        <div class="legend" style="margin-top:14px;">
-          <span><span class="box" style="background:#C6EFCE;"></span> X – anwesend</span>
-          <span><span class="box" style="background:#DDEEFF;"></span> U – Urlaub</span>
-          <span><span class="box" style="background:#FFE0E0;"></span> K – krank</span>
-          <span><span class="box" style="background:#FFEB9C;"></span> KK – Kinder-krank</span>
-          <span><span class="box" style="background:#FFD966;"></span> SOU – Sonderurlaub</span>
-          <span><span class="box" style="background:#E8D5F5;"></span> EZ – Elternzeit</span>
-          <span><span class="box" style="background:#EBEBEB;"></span> F – Freistellung</span>
-          <span><span class="box" style="background:#BDD7EE;"></span> BU – Betriebsurlaub</span>
-        </div>
+        <div id="anwLegende" class="legend" style="margin-top:14px;"></div>
         <div id="anwesenheitSummen" style="margin-top:14px; padding:12px; background:var(--gray-100); border-radius:6px; font-size:13px;"></div>
       </div>
     </div>
@@ -864,6 +857,17 @@
           <div id="ntfyStatus" class="note"></div>
         </div>
 
+        <div class="settings-section">
+          <h3>🎨 Farben der Anwesenheitsliste</h3>
+          <div class="note" style="margin-bottom:12px;">Hintergrundfarbe und Textfarbe für jeden Status individuell anpassen. Änderungen werden sofort gespeichert und überall übernommen.</div>
+          <div id="farbEditorGrid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px;"></div>
+          <div style="margin-top:10px; display:flex; gap:8px;">
+            <button class="btn-primary btn-small" onclick="farbSpeichern()">Farben speichern</button>
+            <button class="btn-secondary btn-small" onclick="farbZuruecksetzen()">Zurücksetzen</button>
+          </div>
+          <div id="farbStatus" class="note" style="margin-top:8px;"></div>
+        </div>
+
       </div>
     </div>
 
@@ -1067,6 +1071,7 @@ let currentProfile = null;
 let berechtigung = {admin:false, export:false, superadmin:false};
 let meineAntraegeCache = [];
 let alleAntraegeCache = [];
+let alleAntraegeAnwCache = []; // fuer Anwesenheitsliste – immer alle, unabhaengig von Rolle
 let stammdatenCache = {};
 let rollenCache = {};
 let pwStatusCache = {};
@@ -1173,7 +1178,9 @@ function zeigeApp(){
   document.getElementById('meineTabBtn').classList.toggle('hidden', nurUebersicht);
   document.getElementById('meinKalenderTabBtn').classList.toggle('hidden', nurUebersicht);
   const istBusemann = (currentUser && (currentUser.email||'').toLowerCase() === 'busemann@rudolf-hilgenroth.de');
-  document.getElementById('anwesenheitTabBtn').classList.toggle('hidden', !istBusemann);
+  const hatAnwZugang = istBusemann || effSuperadmin;
+  document.getElementById('anwesenheitTabBtn').classList.toggle('hidden', !hatAnwZugang);
+  if(hatAnwZugang) starteAnwAntraegeListener();
   document.getElementById('genehmigenTab').classList.toggle('hidden', !effAdmin);
   document.getElementById('korrekturenTab').classList.toggle('hidden', !effAdmin);
   document.getElementById('monatTab').classList.toggle('hidden', !effAdmin);
@@ -1213,6 +1220,7 @@ function zeigeApp(){
     ladeStammdaten();
   }
   ladeNtfyTopic();
+  ladeFarben();
   if(effAdmin){
     befuelleJahresauswahl();
     ladeAlleAntraege();
@@ -1344,9 +1352,10 @@ function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===name));
   document.querySelectorAll('.tab-content').forEach(c=>c.classList.add('hidden'));
   document.getElementById('tab-'+name).classList.remove('hidden');
+  if(name==='einstellungen') ladeFarben();
   if(name==='kalender') renderKalender();
   if(name==='meinkalender') renderMeinKalender();
-  if(name==='anwesenheit'){ renderAnwesenheit(); anwEmpfaengerLaden(); }
+  if(name==='anwesenheit'){ starteAnwAntraegeListener(); renderAnwesenheit(); renderAnwLegende(); anwEmpfaengerLaden(); }
   if(name==='resturlaub') renderResturlaub();
   if(name==='monat') renderMonatsuebersicht();
 }
@@ -1378,6 +1387,34 @@ function updateTagePreview(){
   document.getElementById('tagePreviewLabel').textContent = art==='sonderurlaub'
     ? 'Beantragte Sonderurlaubstage (zählt nicht auf den Resturlaub):'
     : 'Beantragte Urlaubstage (Wochenenden & NRW-Feiertage automatisch ausgeschlossen):';
+  pruefeAntragKonflikt(ziel, start, ende);
+}
+
+// Prueft ob der gewaehlte Zeitraum mit vorhandenen Antraegen desselben Mitarbeiters ueberlappt
+function pruefeAntragKonflikt(ziel, start, ende){
+  const box = document.getElementById('antragKonfliktHinweis');
+  if(!box) return;
+  if(!ziel || !ziel.name || !start || !ende){ box.classList.add('hidden'); return; }
+  if(new Date(ende) < new Date(start)){ box.classList.add('hidden'); return; }
+
+  // Alle Antraege desselben Mitarbeiters, die sich mit dem Zeitraum ueberschneiden
+  const quelle = alleAntraegeAnwCache.length ? alleAntraegeAnwCache : (alleAntraegeCache.length ? alleAntraegeCache : meineAntraegeCache);
+  const konflikte = (quelle||[]).filter(a=>
+    a.name===ziel.name && a.status!=='abgelehnt'
+    && start <= a.ende && ende >= a.start
+  );
+  if(konflikte.length===0){ box.classList.add('hidden'); return; }
+
+  const zeilen = konflikte.map(a=>{
+    const zr = formatDatum(a.start) + (a.start!==a.ende ? '–'+formatDatum(a.ende) : '');
+    const statusTxt = a.status==='genehmigt' ? 'genehmigt' : 'beantragt (offen)';
+    const artTxt = a.art==='sonderurlaub' ? 'Sonderurlaub' : 'Urlaub';
+    return '• '+zr+' – '+artTxt+', '+statusTxt;
+  }).join('<br>');
+
+  box.innerHTML = '⚠️ <strong>'+ziel.name+'</strong> hat in diesem Zeitraum bereits Einträge:<br>'+zeilen+
+    '<br><span style="font-size:12px; color:#8a6d00;">Der Antrag kann trotzdem gestellt werden – bitte nur prüfen, ob das gewollt ist.</span>';
+  box.classList.remove('hidden');
 }
 
 async function submitAntrag(){
@@ -1464,10 +1501,10 @@ async function submitAntrag(){
 function ladeMeineAntraege(){
   db.ref('antraege').on('value', snap=>{
     meineAntraegeCache = [];
+    alleAntraegeAnwCache = [];
     snap.forEach(child=>{
       const a = {id:child.key, ...child.val()};
-      // Meine Anträge = alle Anträge, die auf meinen Namen laufen
-      // (egal wer sie erstellt hat, wichtig wenn Admin/Superadmin für sich selbst welche einträgt).
+      alleAntraegeAnwCache.push(a); // ALLE Antraege fuer Anwesenheitsliste
       if(currentProfile && a.name === currentProfile.name){
         meineAntraegeCache.push(a);
       }
@@ -1476,6 +1513,7 @@ function ladeMeineAntraege(){
     renderMeineAntraege();
     renderUrlaubKonto();
     renderMeinKalender();
+    renderAnwesenheit();  // Kopplung: Urlaub sofort in Anwesenheitsliste sichtbar
   });
 }
 function renderMeinKalender(){
@@ -1666,8 +1704,11 @@ function formatDatum(str){
 function ladeAlleAntraege(){
   db.ref('antraege').on('value', snap=>{
     alleAntraegeCache = [];
+    alleAntraegeAnwCache = [];
     snap.forEach(child=>{
-      alleAntraegeCache.push({id:child.key, ...child.val()});
+      const a = {id:child.key, ...child.val()};
+      alleAntraegeCache.push(a);
+      alleAntraegeAnwCache.push(a);
     });
     alleAntraegeCache.sort((a,b)=> (b.erstelltAm||0) - (a.erstelltAm||0));
     befuelleMitarbeiterFilter();
@@ -1675,6 +1716,7 @@ function ladeAlleAntraege(){
     renderResturlaub();
     renderKalender();
     renderMonatsuebersicht();
+    renderAnwesenheit();
   });
 }
 function befuelleMitarbeiterFilter(){
@@ -2653,16 +2695,124 @@ async function korrekturAblehnen(id){
    ANWESENHEITSLISTE (nur Busemann)
    ========================================================================= */
 const ANW_WERTE = ['X','U','K','KK','SOU','EZ','F','BU'];
-const ANW_FARBEN = {
+// Standardfarben (werden durch Firebase-Werte ueberschrieben wenn gespeichert)
+const ANW_FARBEN_DEFAULT = {
   X:'#C6EFCE', U:'#DDEEFF', K:'#FFE0E0', KK:'#FFEB9C',
-  SOU:'#FFD966', EZ:'#E8D5F5', F:'#EBEBEB', BU:'#BDD7EE',
+  SOU:'#FFD966', EZ:'#E8D5F5', F:'#EBEBEB',
   WE:'#F5F5F5', FT:'#EBEBEB', '':'#ffffff'
 };
-const ANW_FARBEN_TEXT = {
+const ANW_FARBEN_TEXT_DEFAULT = {
   X:'#1a5c2a', U:'#1a5276', K:'#7b1818', KK:'#7d5a00',
-  SOU:'#7d4e00', EZ:'#6a1b9a', F:'#555555', BU:'#1a3a5c',
+  SOU:'#7d4e00', EZ:'#6a1b9a', F:'#555555',
   WE:'#BBBBBB', FT:'#999999', '':'#CCCCCC'
 };
+let ANW_FARBEN = {...ANW_FARBEN_DEFAULT};
+let ANW_FARBEN_TEXT = {...ANW_FARBEN_TEXT_DEFAULT};
+
+const ANW_STATUS_LABELS = {X:'Anwesend',U:'Urlaub',K:'Krank',KK:'Kinder-Krank',SOU:'Sonderurlaub',EZ:'Elternzeit',F:'Freistellung'};
+
+function renderAnwLegende(){
+  const el = document.getElementById('anwLegende');
+  if(!el) return;
+  const kategorien = ['X','U','K','KK','SOU','EZ','F'];
+  el.innerHTML = kategorien.map(k=>
+    `<span><span class="box" style="background:${ANW_FARBEN[k]||'#eee'}; border:1px solid rgba(0,0,0,0.1);"></span> ${k} – ${ANW_STATUS_LABELS[k]}</span>`
+  ).join('');
+}
+
+function ladeFarben(){
+  db.ref('settings/anwFarben').once('value', snap=>{
+    if(snap.exists()){
+      const d = snap.val();
+      if(d.bg)  Object.assign(ANW_FARBEN, d.bg);
+      if(d.txt) Object.assign(ANW_FARBEN_TEXT, d.txt);
+    }
+    bauesFarbEditor();
+    renderAnwLegende();
+  });
+}
+
+function bauesFarbEditor(){
+  const grid = document.getElementById('farbEditorGrid');
+  if(!grid) return;
+  const kategorien = ['X','U','K','KK','SOU','EZ','F'];
+  grid.innerHTML = kategorien.map(k=>`
+    <div style="padding:12px; border:1px solid var(--gray-200); border-radius:8px; background:var(--white);">
+      <div style="font-weight:700; font-size:13px; margin-bottom:10px; display:flex; align-items:center; gap:8px;">
+        <span style="display:inline-block; width:28px; height:28px; border-radius:5px; background:${ANW_FARBEN[k]}; border:1px solid #ddd;"></span>
+        ${k} – ${ANW_STATUS_LABELS[k]}
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+        <div>
+          <label style="font-size:11px;">Hintergrund</label>
+          <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
+            <input type="color" id="farbe_bg_${k}" value="${ANW_FARBEN[k]}" oninput="farbVorschau('${k}')">
+            <input type="text" id="farbe_bg_txt_${k}" value="${ANW_FARBEN[k]}" maxlength="7"
+              style="width:70px; font-family:monospace; font-size:12px;" oninput="farbSyncText('${k}','bg')">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px;">Textfarbe</label>
+          <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
+            <input type="color" id="farbe_txt_${k}" value="${ANW_FARBEN_TEXT[k]}" oninput="farbVorschau('${k}')">
+            <input type="text" id="farbe_txt_txt_${k}" value="${ANW_FARBEN_TEXT[k]}" maxlength="7"
+              style="width:70px; font-family:monospace; font-size:12px;" oninput="farbSyncText('${k}','txt')">
+          </div>
+        </div>
+      </div>
+      <div id="farbe_preview_${k}" style="margin-top:10px; padding:6px 12px; border-radius:5px; font-weight:700; font-size:13px; text-align:center;
+        background:${ANW_FARBEN[k]}; color:${ANW_FARBEN_TEXT[k]}; border:1px solid #ddd;">${k}</div>
+    </div>
+  `).join('');
+}
+
+function farbSyncText(k, typ){
+  if(typ==='bg'){
+    const val = document.getElementById('farbe_bg_txt_'+k).value;
+    if(/^#[0-9a-fA-F]{6}$/.test(val)) document.getElementById('farbe_bg_'+k).value = val;
+  } else {
+    const val = document.getElementById('farbe_txt_txt_'+k).value;
+    if(/^#[0-9a-fA-F]{6}$/.test(val)) document.getElementById('farbe_txt_'+k).value = val;
+  }
+  farbVorschau(k);
+}
+
+function farbVorschau(k){
+  const bg  = document.getElementById('farbe_bg_'+k).value;
+  const txt = document.getElementById('farbe_txt_'+k).value;
+  document.getElementById('farbe_bg_txt_'+k).value  = bg;
+  document.getElementById('farbe_txt_txt_'+k).value = txt;
+  const prev = document.getElementById('farbe_preview_'+k);
+  if(prev){ prev.style.background=bg; prev.style.color=txt; }
+}
+
+async function farbSpeichern(){
+  const kategorien = ['X','U','K','KK','SOU','EZ','F'];
+  const bg={}, txt={};
+  kategorien.forEach(k=>{
+    bg[k]  = document.getElementById('farbe_bg_'+k).value;
+    txt[k] = document.getElementById('farbe_txt_'+k).value;
+  });
+  await db.ref('settings/anwFarben').set({bg, txt});
+  Object.assign(ANW_FARBEN, bg);
+  Object.assign(ANW_FARBEN_TEXT, txt);
+  document.getElementById('farbStatus').textContent = '✓ Farben gespeichert und aktiv.';
+  setTimeout(()=>document.getElementById('farbStatus').textContent='', 3000);
+  renderAnwLegende();
+  renderAnwesenheit();
+}
+
+async function farbZuruecksetzen(){
+  if(!confirm('Alle Farben auf Standard zurücksetzen?')) return;
+  await db.ref('settings/anwFarben').remove();
+  Object.assign(ANW_FARBEN, ANW_FARBEN_DEFAULT);
+  Object.assign(ANW_FARBEN_TEXT, ANW_FARBEN_TEXT_DEFAULT);
+  bauesFarbEditor();
+  renderAnwLegende();
+  renderAnwesenheit();
+  document.getElementById('farbStatus').textContent = '✓ Standardfarben wiederhergestellt.';
+  setTimeout(()=>document.getElementById('farbStatus').textContent='', 3000);
+}
 
 // Feste Reihenfolge der Anwesenheitsliste (wie in der handschriftlichen Liste)
 const ANW_REIHENFOLGE = [
@@ -2892,8 +3042,39 @@ function befuelleAnwDropdowns(){
 
 // Anwesenheit wird pro Mitarbeiter und Tag gespeichert:
 // anwesenheit/{jahr}/{monat}/{mitarbeiterName}/{tag}
+// Aktueller Anwesenheits-Listener (wird bei Monatswechsel abgemeldet)
+let _anwListener = null;
+let _anwListenerPfad = null;
+// Eigener Antraege-Listener fuer die Anwesenheitsliste (unabhaengig von Admin-Cache)
+let _anwAntraegeListener = null;
+
+function starteAnwAntraegeListener(){
+  if(_anwAntraegeListener) return; // laeuft schon
+  _anwAntraegeListener = db.ref('antraege').on('value', snap=>{
+    alleAntraegeAnwCache = [];
+    snap.forEach(child=>{
+      alleAntraegeAnwCache.push({id:child.key, ...child.val()});
+    });
+    // Anwesenheitsliste neu rendern sobald neue Daten da sind
+    const anwGrid = document.getElementById('anwesenheitGrid');
+    if(anwGrid && alleAntraegeAnwCache.length > 0){
+      const monat = parseInt(document.getElementById('anwMonat')?.value);
+      const jahr = parseInt(document.getElementById('anwJahr')?.value);
+      if(!isNaN(monat) && !isNaN(jahr)) renderAnwesenheit();
+    }
+  });
+}
+
 function ladeAnwMonatsDaten(jahr, monat, callback){
-  db.ref('anwesenheit/'+jahr+'/'+monat).once('value', snap=>{
+  const pfad = 'anwesenheit/'+jahr+'/'+monat;
+  // Alten Listener abmelden wenn Monat wechselt
+  if(_anwListenerPfad && _anwListenerPfad !== pfad && _anwListener){
+    db.ref(_anwListenerPfad).off('value', _anwListener);
+    _anwListener = null;
+  }
+  _anwListenerPfad = pfad;
+  // Dauerhafter Listener: rendert automatisch bei jeder Aenderung
+  _anwListener = db.ref(pfad).on('value', snap=>{
     callback(snap.exists() ? snap.val() : {});
   });
 }
@@ -2913,28 +3094,24 @@ function istHalberTagImAntrag(antrag, key){
 }
 
 function getAutoWert(maName, tag, monat, jahr){
-  // Automatisch vorausfuellen: Urlaub/Sonderurlaub aus Antraegen, inkl. halber Tage (Suffix '½')
   const d = new Date(jahr, monat, tag);
-  const we = d.getDay()===0 || d.getDay()===6;
-  const ft = istFeiertag(d);
-  const bu = istBetriebsurlaub(d);
   const key = toKey(d);
-  if(we) return 'WE';
-  if(ft) return 'FT';
-  // Nicht-Arbeitstage von Teilzeitkraeften (z.B. Miederhoff Di-Do, Husteden Mo-Do)
   const arbeitstage = getArbeitstage(maName);
   if(!arbeitstage.includes(d.getDay())) return '';
-  if(bu) return '';  // Betriebsurlaub wird in Anwesenheitsliste nicht angezeigt
-  const urlAntrag = alleAntraegeCache.find(a=>
-    a.name===maName && a.status==='genehmigt' && (a.art||'urlaub')==='urlaub'
-    && key>=a.start && key<=a.ende
-  );
-  if(urlAntrag) return istHalberTagImAntrag(urlAntrag, key) ? 'U½' : 'U';
-  const souAntrag = alleAntraegeCache.find(a=>
-    a.name===maName && a.status==='genehmigt' && a.art==='sonderurlaub'
-    && key>=a.start && key<=a.ende
-  );
-  if(souAntrag) return istHalberTagImAntrag(souAntrag, key) ? 'SOU½' : 'SOU';
+  // Direkt in BEIDEN Caches suchen um sicherzustellen dass Daten gefunden werden
+  const caches = [alleAntraegeAnwCache, alleAntraegeCache].filter(c=>c.length>0);
+  for(const cache of caches){
+    const urlAntrag = cache.find(a=>
+      a.name===maName && a.status==='genehmigt' && (a.art||'urlaub')==='urlaub'
+      && key>=a.start && key<=a.ende
+    );
+    if(urlAntrag) return istHalberTagImAntrag(urlAntrag, key) ? 'U½' : 'U';
+    const souAntrag = cache.find(a=>
+      a.name===maName && a.status==='genehmigt' && a.art==='sonderurlaub'
+      && key>=a.start && key<=a.ende
+    );
+    if(souAntrag) return istHalberTagImAntrag(souAntrag, key) ? 'SOU½' : 'SOU';
+  }
   return '';
 }
 
@@ -2989,12 +3166,14 @@ function renderAnwesenheit(){
       const maGespeichert = alleGespeichert[maKey] || {};
       const isSelected = alteAuswahl.has(maKey);
       const rowBg = isSelected ? 'background:#fffde7;' : '';
+      const nurManuell = ANW_NUR_MANUELL.includes(maKey);
       html += `<tr style="${rowBg}">`;
       // Checkbox
       html += `<td style="text-align:center; padding:0 4px; position:sticky; left:0; z-index:1; background:${isSelected?'#fffde7':'#f8f8f8'};">
-        <input type="checkbox" data-makey="${maKey}" ${isSelected?'checked':''} onchange="anwCheckboxChange(this,'${maKey}')" style="cursor:pointer;"></td>`;
-      // Name
-      html += `<td style="font-size:11.5px; font-weight:600; padding:4px 8px; background:${isSelected?'#fff9c4':'#F8F8F8'}; border-radius:4px; position:sticky; left:28px; z-index:1; white-space:nowrap; border-right:2px solid #DDD;">${m.name}</td>`;
+        <input type="checkbox" data-makey="${maKey}" ${isSelected?'checked':''} onchange="anwCheckboxChange(this,'${maKey}')" style="cursor:pointer;" title="${nurManuell?'Nur manuell auswählbar – wird bei »Alle markieren« übersprungen':''}"></td>`;
+      // Name – bei nur-manuell mit gestricheltem linken Rand als optischem Hinweis
+      const nameBorderStyle = nurManuell ? 'border-right:2px dashed #aaa;' : 'border-right:2px solid #DDD;';
+      html += `<td style="font-size:11.5px; font-weight:600; padding:4px 8px; background:${isSelected?'#fff9c4':'#F8F8F8'}; border-radius:4px; position:sticky; left:28px; z-index:1; white-space:nowrap; ${nameBorderStyle}" title="${nurManuell?m.name+' – nur manuell auswählbar':''}">${m.name}${nurManuell?' <span style="font-size:9px;color:#aaa;font-weight:400;">*</span>':''}</td>`;
 
       let sumU=0, sumAbw=0;
       const arbeitstageM = getArbeitstage(m.name);
@@ -3062,11 +3241,24 @@ function anwCheckboxChange(cb, maKey){
   }
 }
 
+// Mitarbeiter die NICHT per "Alle markieren" erfasst werden (nur manuell)
+const ANW_NUR_MANUELL = [
+  "Robin Gatzemeier",
+  "Vera Henneke",
+  "Andre Niepel"
+].map(n => n.replace(/[.#$[\]\/]/g,'_'));
+
 function anwAlleMarkieren(checked){
   window._anwAuswahl = new Set();
   document.querySelectorAll('#anwTabelle [data-makey]').forEach(cb=>{
+    const maKey = cb.dataset.makey;
+    // Nur-manuell-Mitarbeiter werden bei "Alle" uebersprungen
+    if(checked && ANW_NUR_MANUELL.includes(maKey)){
+      cb.checked = false;
+      return;
+    }
     cb.checked = checked;
-    if(checked) window._anwAuswahl.add(cb.dataset.makey);
+    if(checked) window._anwAuswahl.add(maKey);
     const row = cb.closest('tr');
     if(row) row.style.background = checked ? '#fffde7' : '';
   });
@@ -3193,6 +3385,7 @@ function anwTagAlleSetzen(jahr, monat, tag){
       const updates = {};
       let uebersprungen = 0;
       sortiert.forEach(m=>{
+        if(ANW_NUR_MANUELL.includes(m.name.replace(/[.#$[\]\/]/g,'_'))){ uebersprungen++; return; }
         if(istFesterUrlaub(m.name, tag, monat, jahr)){ uebersprungen++; return; }
         if(!getArbeitstage(m.name).includes(d.getDay())){ uebersprungen++; return; }
         const maKey = m.name.replace(/[.#$[\]\/]/g,'_');
@@ -3340,15 +3533,17 @@ async function exportAnwesenheitPDF(){
     return row;
   });
 
+  // Farben dynamisch aus den Einstellungen laden (inkl. benutzerdefinierter Aenderungen)
   const FARBEN = {
-    X:  '#C6EFCE', U:  '#DDEEFF', K:  '#FFE0E0', KK: '#FFEB9C',
-    SOU:'#FFD966', EZ: '#E8D5F5', F:  '#EBEBEB', WE: '#F5F5F5', FT: '#E8E8E8', NA: '#EFEFEF'
+    ...ANW_FARBEN,
+    WE: '#F5F5F5', FT: '#E8E8E8', NA: '#EFEFEF'
   };
   const TEXTFARBEN = {
-    X:'#1a5c2a', U:'#1a5276', K:'#7b1818', KK:'#7d5a00',
-    SOU:'#7d4e00', EZ:'#6a1b9a', F:'#555555', WE:'#bbbbbb', FT:'#999999', NA:'#cccccc'
+    ...ANW_FARBEN_TEXT,
+    WE: '#bbbbbb', FT: '#999999', NA: '#cccccc'
   };
-  const KAT_FARBEN = {U:'#DDEEFF',K:'#FFE0E0',KK:'#FFEB9C',SOU:'#FFD966',EZ:'#E8D5F5',F:'#EBEBEB'};
+  const KAT_FARBEN = {};
+  ['U','K','KK','SOU','EZ','F'].forEach(k=>{ KAT_FARBEN[k] = ANW_FARBEN[k] || '#EEEEEE'; });
 
   const nameColW = 32, standortColW = 16, sumColW = 16;
   const restBreite = pageW - 16 - nameColW - standortColW - (sumColW*kategorienSichtbar.length);
