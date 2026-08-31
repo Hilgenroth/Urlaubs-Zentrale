@@ -386,6 +386,30 @@
   </div>
 </div>
 
+<!-- ===================== OFFENE ANTRÄGE TOAST ===================== -->
+<div id="offenToast" style="
+  display:none; position:fixed; bottom:24px; right:24px; z-index:9000;
+  background:#fff; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.18);
+  border-left:5px solid var(--red); min-width:280px; max-width:360px;
+  padding:16px 18px 14px; font-family:Arial,sans-serif;">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+    <div>
+      <div style="font-weight:800; font-size:14px; color:var(--black); margin-bottom:6px;">
+        📋 Offene Urlaubsanträge
+      </div>
+      <div id="offenToastText" style="font-size:13px; color:#555; line-height:1.5;"></div>
+    </div>
+    <button onclick="offenToastSchliessen()" style="
+      background:none; border:none; cursor:pointer; font-size:18px; color:#aaa;
+      padding:0; line-height:1; flex-shrink:0; margin-top:-2px;" title="Schließen">✕</button>
+  </div>
+  <button onclick="switchTab('genehmigen'); offenToastSchliessen();" style="
+    margin-top:12px; width:100%; background:var(--red); color:#fff; border:none;
+    border-radius:6px; padding:8px; font-size:13px; font-weight:700; cursor:pointer;">
+    Jetzt genehmigen →
+  </button>
+</div>
+
 <!-- ===================== KORREKTUR BEANTRAGEN (Mitarbeiter) ===================== -->
 <div id="korrekturOverlay" class="onboarding-overlay hidden">
   <div class="onboarding-card" style="max-width:540px;">
@@ -504,7 +528,7 @@
       <div class="tab" id="meineTabBtn" data-tab="meine" onclick="switchTab('meine')">Meine Anträge</div>
       <div class="tab" id="meinKalenderTabBtn" data-tab="meinkalender" onclick="switchTab('meinkalender')">Mein Kalender</div>
       <div class="tab hidden" id="anwesenheitTabBtn" data-tab="anwesenheit" onclick="switchTab('anwesenheit')">Anwesenheitsliste</div>
-      <div class="tab hidden" id="genehmigenTab" data-tab="genehmigen" onclick="switchTab('genehmigen')">Genehmigen</div>
+      <div class="tab hidden" id="genehmigenTab" data-tab="genehmigen" onclick="switchTab('genehmigen')">Genehmigen <span id="offenBadge" class="badge badge-offen hidden" style="margin-left:4px; font-size:10px; padding:1px 6px;"></span></div>
       <div class="tab hidden" id="korrekturenTab" data-tab="korrekturen" onclick="switchTab('korrekturen')">Korrekturen <span id="korrekturenBadge" class="badge badge-offen hidden" style="margin-left:4px;">0</span></div>
       <div class="tab hidden" id="monatTab" data-tab="monat" onclick="switchTab('monat')">Monatsübersicht</div>
       <div class="tab hidden" id="resturlaubTab" data-tab="resturlaub" onclick="switchTab('resturlaub')">Resturlaub</div>
@@ -1717,7 +1741,53 @@ function ladeAlleAntraege(){
     renderKalender();
     renderMonatsuebersicht();
     renderAnwesenheit();
+    aktualisiereOffenBadge();
   });
+}
+
+function aktualisiereOffenBadge(){
+  const offene = alleAntraegeCache.filter(a=>a.status==='offen');
+  const badge = document.getElementById('offenBadge');
+  if(badge){
+    if(offene.length>0){
+      badge.textContent = offene.length;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+  zeigeOffenToast(offene);
+}
+
+let _toastGesehen = new Set(); // bereits gesehene Antrags-IDs
+
+function zeigeOffenToast(offene){
+  const toast = document.getElementById('offenToast');
+  const textEl = document.getElementById('offenToastText');
+  if(!toast || !textEl) return;
+  if(offene.length===0){ toast.style.display='none'; return; }
+
+  // Neue (noch nicht gesehene) Anträge hervorheben
+  const neueIds = offene.map(a=>a.id).filter(id=>!_toastGesehen.has(id));
+
+  if(neueIds.length===0 && toast.style.display!=='none') return; // nichts neues, schon sichtbar
+
+  // Immer anzeigen wenn offene Antraege vorhanden, auch nach App-Start
+  const namen = offene.slice(0,5).map(a=>{
+    const d = a.erstelltAm ? new Date(a.erstelltAm).toLocaleDateString('de-DE') : '';
+    const art = a.art==='sonderurlaub'?'SOU':'U';
+    return `<span style="display:block; padding:2px 0; color:#333;">\u2022 <strong>${a.name}</strong> – ${art}, ${formatDatum(a.start)}${a.start!==a.ende?'–'+formatDatum(a.ende):''}</span>`;
+  }).join('');
+  const mehr = offene.length>5 ? `<span style="color:#aaa; font-size:12px;">+ ${offene.length-5} weitere…</span>` : '';
+  textEl.innerHTML = `<strong style="color:var(--red);">${offene.length} offen${offene.length===1?'er Antrag':'e Anträge'}:</strong><br>${namen}${mehr}`;
+  toast.style.display='block';
+}
+
+function offenToastSchliessen(){
+  const toast = document.getElementById('offenToast');
+  if(toast) toast.style.display='none';
+  // Alle aktuell offenen als "gesehen" markieren
+  alleAntraegeCache.filter(a=>a.status==='offen').forEach(a=>_toastGesehen.add(a.id));
 }
 function befuelleMitarbeiterFilter(){
   const sel = document.getElementById('adminFilterMitarbeiter');
