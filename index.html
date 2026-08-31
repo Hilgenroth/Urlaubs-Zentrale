@@ -2883,8 +2883,8 @@ async function anwMailSenden(){
     const bg = we||ft ? '#AAAAAA' : '#444444';
     tbl += `<th style="background:${bg}; color:#fff; padding:3px 1px; text-align:center; min-width:20px; font-size:9px;">${t}<br>${WT[d.getDay()]}</th>`;
   }
-  tbl += '<th style="background:#1a5276; color:#fff; padding:3px 4px; text-align:center;">ΣU</th>';
-  tbl += '<th style="background:#7b1818; color:#fff; padding:3px 4px; text-align:center;">ΣAbw</th>';
+  tbl += `<th style="background:${ANW_FARBEN_TEXT.U||'#1a5276'}; color:#fff; padding:3px 4px; text-align:center;">Urlaub</th>`;
+  tbl += `<th style="background:${ANW_FARBEN_TEXT.K||'#7b1818'}; color:#fff; padding:3px 4px; text-align:center;">Abwesenheit</th>`;
   tbl += '</tr>';
 
   // Mitarbeiter-Zeilen
@@ -3139,84 +3139,143 @@ function renderAnwesenheit(){
     const alteAuswahl = new Set(window._anwAuswahl || []);
     window._anwAuswahl = alteAuswahl;
 
-    let html = '<div style="overflow-x:auto;">';
-    html += '<table style="border-collapse:separate; border-spacing:2px; font-size:11px; width:100%;" id="anwTabelle">';
-    html += '<thead><tr>';
-    // Checkbox-Spalte Header: Alle markieren
-    html += '<th style="padding:3px 4px; background:#DDDDDD; border-radius:4px; width:28px; position:sticky; left:0; z-index:3;">' +
-      '<input type="checkbox" id="anwAlleCheck" onchange="anwAlleMarkieren(this.checked)" title="Alle markieren" style="cursor:pointer;"></th>';
-    html += '<th style="text-align:left; padding:4px 8px; background:#DDDDDD; border-radius:4px; min-width:150px; font-size:11px; position:sticky; left:28px; z-index:2; white-space:nowrap;">Mitarbeiter</th>';
-    for(let t=1; t<=tageImMonat; t++){
-      const d = new Date(jahr, monat, t);
-      const we = d.getDay()===0||d.getDay()===6;
-      const ft = istFeiertag(d);
-      const isToday = d.toDateString()===heute.toDateString();
-      const bg = isToday ? '#C8102E' : (we||ft ? '#CCCCCC' : '#444444');
-      const col = isToday ? '#fff' : (we||ft ? '#888' : '#fff');
-      html += `<th style="text-align:center; padding:3px 1px; background:${bg}; color:${col}; border-radius:4px; min-width:28px; font-size:10px; font-family:Consolas,monospace; cursor:pointer;"
-        onclick="anwTagAlleSetzen(${jahr},${monat},${t})" title="Klick: alle auf diesen Tag setzen">`;
-      html += `${t}<br><span style="font-weight:400; font-size:9px;">${WT[d.getDay()]}</span></th>`;
-    }
-    html += '<th style="text-align:center; padding:3px 4px; background:#444; color:#fff; border-radius:4px; min-width:32px; font-size:10px;">ΣU</th>';
-    html += '<th style="text-align:center; padding:3px 4px; background:#444; color:#fff; border-radius:4px; min-width:36px; font-size:10px;">ΣAbw</th>';
-    html += '</tr></thead><tbody>';
-
+    // Vorlauf: pruefen ob es Abwesenheiten (K/KK/SOU/EZ/F) gibt – fuer bedingte Spalte
+    const abwKategorien = ['K','KK','SOU','EZ','F'];
+    let hatAbw = false;
     sortiert.forEach(m=>{
       const maKey = m.name.replace(/[.#$[\]\\/]/g,'_');
-      const maGespeichert = alleGespeichert[maKey] || {};
-      const isSelected = alteAuswahl.has(maKey);
-      const rowBg = isSelected ? 'background:#fffde7;' : '';
-      const nurManuell = ANW_NUR_MANUELL.includes(maKey);
-      html += `<tr style="${rowBg}">`;
-      // Checkbox
-      html += `<td style="text-align:center; padding:0 4px; position:sticky; left:0; z-index:1; background:${isSelected?'#fffde7':'#f8f8f8'};">
-        <input type="checkbox" data-makey="${maKey}" ${isSelected?'checked':''} onchange="anwCheckboxChange(this,'${maKey}')" style="cursor:pointer;" title="${nurManuell?'Nur manuell auswählbar – wird bei »Alle markieren« übersprungen':''}"></td>`;
-      // Name – bei nur-manuell mit gestricheltem linken Rand als optischem Hinweis
-      const nameBorderStyle = nurManuell ? 'border-right:2px dashed #aaa;' : 'border-right:2px solid #DDD;';
-      html += `<td style="font-size:11.5px; font-weight:600; padding:4px 8px; background:${isSelected?'#fff9c4':'#F8F8F8'}; border-radius:4px; position:sticky; left:28px; z-index:1; white-space:nowrap; ${nameBorderStyle}" title="${nurManuell?m.name+' – nur manuell auswählbar':''}">${m.name}${nurManuell?' <span style="font-size:9px;color:#aaa;font-weight:400;">*</span>':''}</td>`;
-
-      let sumU=0, sumAbw=0;
-      const arbeitstageM = getArbeitstage(m.name);
-      for(let t=1; t<=tageImMonat; t++){
-        const d = new Date(jahr, monat, t);
-        const we = d.getDay()===0||d.getDay()===6;
-        const ft = istFeiertag(d);
-        const keinArbeitstag = !we && !ft && !arbeitstageM.includes(d.getDay());
-        const isToday = d.toDateString()===heute.toDateString();
-        const festerUrlaub = istFesterUrlaub(m.name, t, monat, jahr);
-        let wert = maGespeichert[t] || '';
-        if(festerUrlaub) wert = getAutoWert(m.name, t, monat, jahr);  // Urlaub hat Vorrang, nicht ueberschreibbar
-        else if(!wert && !keinArbeitstag) wert = getAutoWert(m.name, t, monat, jahr);
-        const basis = anwBasisTyp(wert);
-        const nichtEditierbar = we || ft || festerUrlaub || keinArbeitstag;
-        // Wochenende/Feiertag/kein Arbeitstag grau, Urlaub in Urlaubsfarbe (deutlich sichtbar!), Rest normal
-        const bg   = (we||ft||keinArbeitstag) ? '#F2F2F2' : (ANW_FARBEN[basis]||'#FAFAFA');
-        const txtC = (we||ft||keinArbeitstag) ? '#CCCCCC' : (ANW_FARBEN_TEXT[basis]||'#CCCCCC');
-        const outline = isToday ? 'box-shadow:inset 0 0 0 2px var(--red);' : '';
-        if(basis==='U') sumU += anwZahlenwert(wert);
-        else if(basis==='K'||basis==='KK'||basis==='SOU'||basis==='EZ') sumAbw += anwZahlenwert(wert);
-        if(nichtEditierbar){
-          const anzeige = (we||ft||keinArbeitstag) ? '' : wert;
-          const titel = festerUrlaub
-            ? `${m.name} – ${t}.${monat+1}.${jahr} · ${basis==='SOU'?'Sonderurlaub':'Urlaub'}${wert.includes('½')?' (halber Tag)':''} (fest aus Antrag, nicht änderbar)`
-            : (keinArbeitstag ? `${m.name} arbeitet an diesem Wochentag nicht` : '');
-          const lockStyle = festerUrlaub ? 'border:2px solid #1a5276;' : '';
-          html += `<td title="${titel}" style="text-align:center; background:${bg}; ${outline}${lockStyle} border-radius:3px; height:24px; padding:0;
-            font-size:9px; font-weight:700; color:${txtC}; font-family:Consolas,monospace; cursor:not-allowed;">${anzeige}</td>`;
-        } else {
-          html += `<td style="text-align:center; background:${bg}; ${outline} border-radius:3px; height:24px; padding:0; cursor:pointer;"
-            title="${m.name} – ${t}.${monat+1}.${jahr}"
-            onclick="anwZelleKlick(this,${jahr},${monat},${t},'${maKey.replace(/'/g,"\\'")}','${wert}')">
-            <span style="font-size:10px; font-weight:700; color:${txtC}; font-family:Consolas,monospace; display:block; line-height:24px;">${wert||'–'}</span>
-          </td>`;
-        }
+      const maGes = alleGespeichert[maKey]||{};
+      const arbT = getArbeitstage(m.name);
+      for(let t=1;t<=tageImMonat;t++){
+        const d=new Date(jahr,monat,t);
+        if(d.getDay()===0||d.getDay()===6||istFeiertag(d)) continue;
+        if(!arbT.includes(d.getDay())) continue;
+        let wert = maGes[t]||'';
+        if(!wert) wert = getAutoWert(m.name,t,monat,jahr);
+        if(abwKategorien.includes(anwBasisTyp(wert))){ hatAbw=true; break; }
       }
-      html += `<td style="text-align:center; background:#DDEEFF; border-radius:4px; font-weight:700; font-size:11px; font-family:Consolas,monospace; padding:2px 4px; color:#1a5276;">${sumU?String(sumU).replace('.',','):'–'}</td>`;
-      html += `<td style="text-align:center; background:#FFE0E0; border-radius:4px; font-weight:700; font-size:11px; font-family:Consolas,monospace; padding:2px 4px; color:#7b1818;">${sumAbw?String(sumAbw).replace('.',','):'–'}</td>`;
-      html += '</tr>';
     });
 
-    html += '</tbody></table></div>';
+    // Breiten dynamisch berechnen
+    const CS = 22, NS = 120, SU = 28;
+
+    let html = '<div style="width:100%; overflow:hidden;">';
+    html += `<table style="border-collapse:separate; border-spacing:1px; font-size:10px; width:100%; table-layout:fixed;" id="anwTabelle">`;
+
+    // Colgroup für feste Breiten
+    html += '<colgroup>';
+    html += `<col style="width:${CS}px">`;
+    html += `<col style="width:${NS}px">`;
+    for(let t=1;t<=tageImMonat;t++) html += `<col>`;
+    html += `<col style="width:${SU}px">`;  // ΣU
+    if(hatAbw) html += `<col style="width:${SU+4}px">`;  // ΣAbw nur wenn noetig
+    html += '</colgroup>';
+
+    // Header
+    html += '<thead><tr>';
+    html += `<th style="padding:2px; background:#DDDDDD; border-radius:3px;">
+      <input type="checkbox" id="anwAlleCheck" onchange="anwAlleMarkieren(this.checked)" title="Alle markieren" style="cursor:pointer; width:12px; height:12px;"></th>`;
+    html += `<th style="text-align:left; padding:3px 5px; background:#DDDDDD; border-radius:3px; font-size:10px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">Mitarbeiter</th>`;
+    for(let t=1;t<=tageImMonat;t++){
+      const d=new Date(jahr,monat,t);
+      const we=d.getDay()===0||d.getDay()===6, ft=istFeiertag(d);
+      const isToday=d.toDateString()===heute.toDateString();
+      const bg=isToday?'#C8102E':(we||ft?'#BBBBBB':'#444444');
+      const col=isToday||!(we||ft)?'#fff':'#666';
+      html+=`<th style="text-align:center; padding:1px 0; background:${bg}; color:${col}; border-radius:3px; font-size:9px; line-height:1.2; cursor:pointer; overflow:hidden;"
+        onclick="anwTagAlleSetzen(${jahr},${monat},${t})" title="${t}.${monat+1}.${jahr} – Klick: Status für alle setzen">
+        ${t}<br><span style="font-weight:400; font-size:8px;">${WT[d.getDay()]}</span></th>`;
+    }
+    html+=`<th style="text-align:center; padding:2px; background:${ANW_FARBEN.U||'#DDEEFF'}; color:${ANW_FARBEN_TEXT.U||'#1a5276'}; border-radius:3px; font-size:9px; border:1px solid rgba(0,0,0,0.1);">U</th>`;
+    html+=(hatAbw?`<th style="text-align:center; padding:2px; background:${ANW_FARBEN.K||'#FFE0E0'}; color:${ANW_FARBEN_TEXT.K||'#7b1818'}; border-radius:3px; font-size:9px; border:1px solid rgba(0,0,0,0.1);">K+</th>`:'<th style="background:#f5f5f5;"></th>');
+    html+='</tr></thead><tbody>';
+
+    // Summen für Summenzeile
+    const gesamtSummen = {};
+    ['U','K','KK','SOU','EZ','F'].forEach(k=>gesamtSummen[k]=0);
+
+    sortiert.forEach(m=>{
+      const maKey=m.name.replace(/[.#$[\]\\/]/g,'_');
+      const maGespeichert=alleGespeichert[maKey]||{};
+      const isSelected=alteAuswahl.has(maKey);
+      const nurManuell=ANW_NUR_MANUELL.includes(maKey);
+      const rowBg=isSelected?'background:#fffde7;':'';
+      html+=`<tr style="${rowBg}">`;
+
+      // Checkbox
+      html+=`<td style="text-align:center; padding:0; background:${isSelected?'#fffde7':'#f8f8f8'}; border-radius:2px;">
+        <input type="checkbox" data-makey="${maKey}" ${isSelected?'checked':''} onchange="anwCheckboxChange(this,'${maKey}')" style="cursor:pointer; width:11px; height:11px;" title="${nurManuell?'Nur manuell':''}"></td>`;
+
+      // Name
+      const nameBg = isSelected?'#fff9c4':'#F8F8F8';
+      const nameBorder = nurManuell?'border-right:1px dashed #aaa;':'border-right:1px solid #DDD;';
+      const nameTxt = m.name.split(' ').pop(); // Nur Nachname für Platzsparsamkeit
+      const vollName = m.name;
+      html+=`<td style="font-size:10px; font-weight:700; padding:2px 4px; background:${nameBg}; border-radius:2px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; ${nameBorder}" title="${vollName}${nurManuell?' (nur manuell)':''}">${vollName}${nurManuell?'<span style="color:#bbb;font-weight:400;"> *</span>':''}</td>`;
+
+      let sumU=0, sumAbw=0;
+      const arbeitstageM=getArbeitstage(m.name);
+      for(let t=1;t<=tageImMonat;t++){
+        const d=new Date(jahr,monat,t);
+        const we=d.getDay()===0||d.getDay()===6;
+        const ft=istFeiertag(d);
+        const keinArbeitstag=!we&&!ft&&!arbeitstageM.includes(d.getDay());
+        const isToday=d.toDateString()===heute.toDateString();
+        const festerUrlaub=istFesterUrlaub(m.name,t,monat,jahr);
+        let wert=maGespeichert[t]||'';
+        if(festerUrlaub) wert=getAutoWert(m.name,t,monat,jahr);
+        else if(!wert&&!keinArbeitstag) wert=getAutoWert(m.name,t,monat,jahr);
+        const basis=anwBasisTyp(wert);
+        const nichtEditierbar=we||ft||festerUrlaub||keinArbeitstag;
+        const bg=(we||ft||keinArbeitstag)?'#F0F0F0':(ANW_FARBEN[basis]||'#FAFAFA');
+        const txtC=(we||ft||keinArbeitstag)?'#CCCCCC':(ANW_FARBEN_TEXT[basis]||'#CCCCCC');
+        const outline=isToday?'box-shadow:inset 0 0 0 1.5px var(--red);':'';
+        const lockStyle=festerUrlaub?'border:1.5px solid #1a5276;':'';
+
+        if(basis==='U') sumU+=anwZahlenwert(wert);
+        else if(['K','KK','SOU','EZ'].includes(basis)) sumAbw+=anwZahlenwert(wert);
+        if(basis&&gesamtSummen[basis]!==undefined) gesamtSummen[basis]+=anwZahlenwert(wert);
+
+        const anzeige = (we||ft||keinArbeitstag)?'':(wert||'');
+        if(nichtEditierbar){
+          const titel=festerUrlaub?`${m.name} – ${t}.${monat+1}.${jahr} · ${basis==='SOU'?'SOU':'Urlaub'} (fest, nicht änderbar)`:
+            (keinArbeitstag?`${m.name} – kein Arbeitstag`:'');
+          html+=`<td title="${titel}" style="text-align:center; background:${bg}; ${outline}${lockStyle} border-radius:2px; height:20px; padding:0; font-size:9px; font-weight:700; color:${txtC}; font-family:Consolas,monospace; cursor:not-allowed; overflow:hidden;">${anzeige}</td>`;
+        } else {
+          html+=`<td style="text-align:center; background:${bg}; ${outline} border-radius:2px; height:20px; padding:0; cursor:pointer;" title="${m.name} – ${t}.${monat+1}.${jahr}" onclick="anwZelleKlick(this,${jahr},${monat},${t},'${maKey.replace(/'/g,"\\'")}','${wert}')">
+            <span style="font-size:9px; font-weight:700; color:${txtC}; font-family:Consolas,monospace; display:block; line-height:20px;">${anzeige||'·'}</span></td>`;
+        }
+      }
+      html+=`<td style="text-align:center; background:${sumU?ANW_FARBEN.U||'#DDEEFF':'#F5F5F5'}; border-radius:2px; font-weight:700; font-size:10px; font-family:Consolas,monospace; color:${sumU?(ANW_FARBEN_TEXT.U||'#1a5276'):'#ccc'}; border:${sumU?'1.5px solid rgba(0,0,0,0.1)':'none'};">${sumU?String(sumU).replace('.',','):''}</td>`;
+      if(hatAbw) html+=`<td style="text-align:center; background:${sumAbw?ANW_FARBEN.K||'#FFE0E0':'#F5F5F5'}; border-radius:2px; font-weight:700; font-size:10px; font-family:Consolas,monospace; color:${sumAbw?(ANW_FARBEN_TEXT.K||'#7b1818'):'#ccc'}; border:${sumAbw?'1.5px solid rgba(0,0,0,0.1)':'none'};">${sumAbw?String(sumAbw).replace('.',','):''}</td>`;
+      html+='</tr>';
+    });
+
+    // Summenzeile unten (nur wenn Werte vorhanden)
+    const kategorien=['U','K','KK','SOU','EZ','F'];
+    const hatSummen=kategorien.some(k=>gesamtSummen[k]>0);
+    if(hatSummen){
+      html+=`<tr style="border-top:2px solid #DDD;">`;
+      html+=`<td colspan="2" style="padding:3px 5px; font-size:10px; font-weight:700; color:#555; background:#f0f0f0; border-radius:2px;">Gesamt</td>`;
+      for(let t=1;t<=tageImMonat;t++) html+=`<td style="background:#f5f5f5;"></td>`;
+      const sumU=gesamtSummen.U, sumAbw=kategorien.slice(1).reduce((s,k)=>s+gesamtSummen[k],0);
+      html+=`<td style="text-align:center; background:${ANW_FARBEN.U||'#DDEEFF'}; border-radius:2px; font-weight:800; font-size:10px; font-family:Consolas,monospace; color:${ANW_FARBEN_TEXT.U||'#1a5276'};">${sumU?String(sumU).replace('.',','):''}</td>`;
+      if(hatAbw) html+=`<td style="text-align:center; background:${ANW_FARBEN.K||'#FFE0E0'}; border-radius:2px; font-weight:800; font-size:10px; font-family:Consolas,monospace; color:${ANW_FARBEN_TEXT.K||'#7b1818'};">${sumAbw?String(sumAbw).replace('.',','):''}</td>`;
+      html+='</tr>';
+    }
+
+    html+='</tbody></table></div>';
+
+    // Detaillierte Summen unterhalb der Tabelle (nur wenn vorhanden)
+    const detailSummen = kategorien.filter(k=>gesamtSummen[k]>0).map(k=>
+      `<span style="background:${ANW_FARBEN[k]||'#eee'}; color:${ANW_FARBEN_TEXT[k]||'#333'}; padding:3px 10px; border-radius:20px; font-weight:700; font-family:Consolas,monospace; font-size:12px; margin-right:6px; border:1px solid rgba(0,0,0,0.08);">${k}: ${String(gesamtSummen[k]).replace('.',',')}</span>`
+    ).join('');
+    if(detailSummen){
+      html+=`<div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+        <span style="font-size:12px; font-weight:600; color:#555; margin-right:4px;">Monatsübersicht:</span>
+        ${detailSummen}</div>`;
+    }
+
     grid.innerHTML = html;
     anwToolbarAktualisieren();
   });
@@ -3577,6 +3636,7 @@ async function exportAnwesenheitPDF(){
         const kat = kategorienSichtbar[col-2-tageImMonat];
         if(data.cell.raw){
           data.cell.styles.fillColor = anwHexZuRgb(KAT_FARBEN[kat]);
+          data.cell.styles.textColor = anwHexZuRgb(ANW_FARBEN_TEXT[kat] || '#333333');
           data.cell.styles.fontStyle = 'bold';
         }
       }
