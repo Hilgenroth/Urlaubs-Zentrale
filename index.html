@@ -1756,6 +1756,10 @@ function aktualisiereOffenBadge(){
       badge.classList.add('hidden');
     }
   }
+  // Browser-Tab-Titel aktualisieren
+  document.title = offene.length > 0
+    ? `(${offene.length}) Urlaubszentrale | Hilgenroth`
+    : 'Urlaubszentrale | Rudolf Hilgenroth GmbH & Co. KG';
   zeigeOffenToast(offene);
 }
 
