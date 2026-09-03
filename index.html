@@ -1588,23 +1588,23 @@ function renderMeinKalender(){
           const d = new Date(jahr, m, tag);
           const key = toKey(d);
           const isToday = d.getFullYear()===heute.getFullYear() && d.getMonth()===heute.getMonth() && d.getDate()===heute.getDate();
+          const arbeitstage = getArbeitstage(currentProfile ? currentProfile.name : null);
+          const keinArbeitstag = !istFeiertagOderWochenende(d) && !arbeitstage.includes(d.getDay());
           let cls = '';
           if(d.getDay()===0 || d.getDay()===6) cls = 'we';
           if(istFeiertag(d)) cls = 'feiertag';
-          if(istBetriebsurlaub(d)) cls = 'betriebsurlaub';
-
+          if(keinArbeitstag) cls = 'we';
+          // Betriebsurlaub nur wenn kein echter Antrag vorhanden
           const treffer = meineAntraegeCache.find(a => a.status!=='abgelehnt' && key>=a.start && key<=a.ende);
-          if(treffer){
+          if(!treffer && istBetriebsurlaub(d) && !keinArbeitstag && d.getDay()!==0 && d.getDay()!==6 && !istFeiertag(d)) cls = 'betriebsurlaub';
+          // Urlaub nur einfärben wenn echter Werktag des Mitarbeiters
+          if(treffer && !keinArbeitstag && d.getDay()!==0 && d.getDay()!==6 && !istFeiertag(d)){
             const istSou = treffer.art==='sonderurlaub';
             cls = treffer.status==='genehmigt' ? (istSou?'sou':'genehmigt') : 'offen';
             if(treffer.status==='genehmigt' && !istSou){
-              // Fuer die Monatszaehlung: nur wenn nicht bereits als Wochenende/Feiertag gezählt
-              const arbeitstage = getArbeitstage(currentProfile.name);
-              if(!istFeiertagOderWochenende(d) && arbeitstage.includes(d.getDay())){
-                genommen += 1;
-                if((key===treffer.start && treffer.halbTagStart) || (key===treffer.ende && treffer.halbTagEnde)){
-                  genommen -= 0.5;
-                }
+              genommen += 1;
+              if((key===treffer.start && treffer.halbTagStart) || (key===treffer.ende && treffer.halbTagEnde)){
+                genommen -= 0.5;
               }
             }
           }
@@ -2196,12 +2196,17 @@ function renderKalender(){
       const isToday = istAktMonat && heute.getDate()===t;
       let cls = '';
 
-      // Priorität: individueller Antrag > Betriebsurlaub > Feiertag > Wochenende
+      // Priorität: Wochenende/Feiertag > Nicht-Arbeitstag > Betriebsurlaub > individueller Antrag
+      const keinArbeitstag = !istFeiertag(d) && d.getDay()!==0 && d.getDay()!==6 && !getArbeitstage(m.name).includes(d.getDay());
       if(d.getDay()===0 || d.getDay()===6) cls = 'we';
       if(istFeiertag(d)) cls = 'feiertag';
-      if(istBetriebsurlaub(d)) cls = 'betriebsurlaub';
+      if(keinArbeitstag) cls = 'we';
 
-      const treffer = alleAntraegeCache.find(a=> a.name===m.name && a.status!=='abgelehnt' && key>=a.start && key<=a.ende);
+      const treffer = !keinArbeitstag && d.getDay()!==0 && d.getDay()!==6 && !istFeiertag(d)
+        ? alleAntraegeCache.find(a=> a.name===m.name && a.status!=='abgelehnt' && key>=a.start && key<=a.ende)
+        : null;
+      // Betriebsurlaub nur wenn kein echter Antrag vorhanden
+      if(!treffer && istBetriebsurlaub(d) && !keinArbeitstag && d.getDay()!==0 && d.getDay()!==6 && !istFeiertag(d)) cls = 'betriebsurlaub';
       let inhalt = '';
       if(treffer){
         const istSou = treffer.art==='sonderurlaub';
