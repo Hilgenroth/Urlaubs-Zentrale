@@ -639,7 +639,19 @@
           <span style="font-size:12.5px; font-weight:700; color:var(--gray-700);">📬 Empfänger:</span>
           <input type="text" id="anwEmpfaenger" placeholder="z.B. grisail@rudolf-hilgenroth.de" style="flex:1; min-width:220px; max-width:380px; font-size:13px;" oninput="anwEmpfaengerSpeichern()">
           <span class="note" style="margin:0;">Mehrere Adressen mit Komma trennen</span>
+          <button class="btn-secondary btn-small" onclick="anwEmpfaengerFestsetzen()" title="Aktuellen Empfänger als Standard speichern">📌 Als Standard</button>
         </div>
+
+        <!-- Ausnahme-Modus fuer Teilzeitkraefte -->
+        <div style="margin-bottom:12px; padding:8px 14px; background:#fff8e1; border:1px solid #f0c040; border-radius:6px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <span style="font-size:12px; font-weight:700; color:#7d5a00;">⚠️ Ausnahme-Modus:</span>
+          <span class="note" style="margin:0; font-size:12px;">Husteden (Fr) / Miederhoff (Mo+Fr) auch an gesperrten Tagen eintragbar</span>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; margin:0; text-transform:none; font-weight:600; font-size:12px;">
+            <input type="checkbox" id="anwAusnahmeModus" onchange="anwAusnahmeModusToggle()" style="width:14px;height:14px;">
+            Ausnahme aktivieren
+          </label>
+        </div>
+
         <div class="note" style="margin-bottom:12px;">
           Trage täglich deinen Status ein. Urlaub wird automatisch vorausgefüllt. Leere Felder = noch nicht eingetragen.
         </div>
@@ -882,7 +894,23 @@
         </div>
 
         <div class="settings-section">
-          <h3>🎨 Farben der Anwesenheitsliste</h3>
+          <div class="settings-section">
+          <h3>📧 Anwesenheitsliste – E-Mail-Einstellungen</h3>
+          <label>Fester Empfänger (Standard)</label>
+          <div class="inline-form">
+            <input type="text" id="anwEmpfaengerFest" placeholder="z.B. grisail@rudolf-hilgenroth.de" style="flex:2;">
+            <button class="btn-primary" onclick="anwMailEinstellungenSpeichern()">Speichern</button>
+          </div>
+          <label style="margin-top:12px;">E-Mail-Betreff</label>
+          <input type="text" id="anwMailBetreff" placeholder="Anwesenheitsliste {monat} {jahr}" style="width:100%;">
+          <label style="margin-top:10px;">E-Mail-Text</label>
+          <div class="note" style="margin-bottom:6px;">Platzhalter: <code>{monat}</code>, <code>{jahr}</code>, <code>{datum}</code></div>
+          <textarea id="anwMailText" rows="5" style="width:100%; font-family:Arial,sans-serif; font-size:13px;"></textarea>
+          <button class="btn-primary" style="margin-top:8px;" onclick="anwMailEinstellungenSpeichern()">Speichern</button>
+          <div id="anwMailEinstellungenStatus" class="note" style="margin-top:6px;"></div>
+        </div>
+
+        <h3>🎨 Farben der Anwesenheitsliste</h3>
           <div class="note" style="margin-bottom:12px;">Hintergrundfarbe und Textfarbe für jeden Status individuell anpassen. Änderungen werden sofort gespeichert und überall übernommen.</div>
           <div id="farbEditorGrid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px;"></div>
           <div style="margin-top:10px; display:flex; gap:8px;">
@@ -1376,7 +1404,7 @@ function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===name));
   document.querySelectorAll('.tab-content').forEach(c=>c.classList.add('hidden'));
   document.getElementById('tab-'+name).classList.remove('hidden');
-  if(name==='einstellungen') ladeFarben();
+  if(name==='einstellungen'){ ladeFarben(); anwMailEinstellungenLaden(); }
   if(name==='kalender') renderKalender();
   if(name==='meinkalender') renderMeinKalender();
   if(name==='anwesenheit'){ starteAnwAntraegeListener(); renderAnwesenheit(); renderAnwLegende(); anwEmpfaengerLaden(); }
@@ -2909,10 +2937,62 @@ function sortiereAnwesenheit(liste){
 
 
 // Empfänger in Firebase speichern und laden
+let _anwAusnahmeModus = false;
+
+function anwAusnahmeModusToggle(){
+  _anwAusnahmeModus = document.getElementById('anwAusnahmeModus').checked;
+  renderAnwesenheit(); // Neu rendern damit Sperren aufgehoben werden
+}
+
+function anwEmpfaengerFestsetzen(){
+  const val = document.getElementById('anwEmpfaenger').value.trim();
+  if(!val) return;
+  db.ref('settings/anwEmpfaenger').set(val);
+  // Auch in Einstellungen synchronisieren
+  const festEl = document.getElementById('anwEmpfaengerFest');
+  if(festEl) festEl.value = val;
+}
+
+async function anwMailEinstellungenSpeichern(){
+  const empf  = (document.getElementById('anwEmpfaengerFest')?.value||'').trim();
+  const betr  = (document.getElementById('anwMailBetreff')?.value||'').trim();
+  const text  = (document.getElementById('anwMailText')?.value||'').trim();
+  const data  = {};
+  if(empf) data.empfaenger = empf;
+  if(betr) data.betreff = betr;
+  if(text) data.mailText = text;
+  await db.ref('settings/anwMail').set(data);
+  const st = document.getElementById('anwMailEinstellungenStatus');
+  if(st){ st.textContent = '✓ Gespeichert.'; setTimeout(()=>st.textContent='',2500); }
+  // Empfänger-Feld im Tab synchronisieren
+  const el = document.getElementById('anwEmpfaenger');
+  if(el && empf) el.value = empf;
+}
+
+function anwMailEinstellungenLaden(){
+  db.ref('settings/anwMail').once('value', snap=>{
+    if(!snap.exists()) return;
+    const d = snap.val();
+    const festEl = document.getElementById('anwEmpfaengerFest');
+    if(festEl && d.empfaenger) festEl.value = d.empfaenger;
+    const betrEl = document.getElementById('anwMailBetreff');
+    if(betrEl && d.betreff) betrEl.value = d.betreff;
+    const textEl = document.getElementById('anwMailText');
+    if(textEl && d.mailText) textEl.value = d.mailText;
+  });
+}
+
 function anwEmpfaengerLaden(){
-  db.ref('settings/anwEmpfaenger').once('value', snap=>{
+  db.ref('settings/anwMail').once('value', snap=>{
+    const d = snap.exists() ? snap.val() : {};
     const el = document.getElementById('anwEmpfaenger');
-    if(el && snap.exists()) el.value = snap.val();
+    // Fester Empfänger aus Mail-Einstellungen hat Vorrang
+    if(el && d.empfaenger) el.value = d.empfaenger;
+    else {
+      db.ref('settings/anwEmpfaenger').once('value', s=>{
+        if(el && s.exists()) el.value = s.val();
+      });
+    }
   });
 }
 function anwEmpfaengerSpeichern(){
@@ -3006,14 +3086,18 @@ async function anwMailSenden(){
     const item = new ClipboardItem({'text/html': blob, 'text/plain': plainBlob});
     await navigator.clipboard.write([item]);
 
-    // Mail öffnen
-    const betreff = encodeURIComponent(`Anwesenheitsliste ${monatName} ${jahr}`);
-    const body = encodeURIComponent(
+    // Mail öffnen – Betreff und Text aus Einstellungen laden
+    const mailSnap = await db.ref('settings/anwMail').once('value');
+    const mailEinst = mailSnap.exists() ? mailSnap.val() : {};
+    const pl = s => s.replace('{monat}',monatName).replace('{jahr}',String(jahr)).replace('{datum}',new Date().toLocaleDateString('de-DE'));
+    const betreffText = mailEinst.betreff ? pl(mailEinst.betreff) : `Anwesenheitsliste ${monatName} ${jahr}`;
+    const bodyText = mailEinst.mailText ? pl(mailEinst.mailText) :
       `Hallo,\n\nanbei die Anwesenheitsliste für ${monatName} ${jahr}.\n\n`+
       `Bitte die Tabelle unten einfügen (Strg+V nach dem Öffnen der Mail):\n\n`+
       `[Tabelle wurde in die Zwischenablage kopiert – bitte hier einfügen]\n\n`+
-      `Viele Grüße\nAnette Busemann`
-    );
+      `Viele Grüße\nAnette Busemann`;
+    const betreff = encodeURIComponent(betreffText);
+    const body = encodeURIComponent(bodyText);
     window.location.href = `mailto:${empfaenger}?subject=${betreff}&body=${body}`;
 
     // Hinweis anzeigen
@@ -3299,29 +3383,46 @@ function renderAnwesenheit(){
         const we=d.getDay()===0||d.getDay()===6;
         const ft=istFeiertag(d);
         const keinArbeitstag=!we&&!ft&&!arbeitstageM.includes(d.getDay());
+        const keinArb_gesperrt = keinArbeitstag && !_anwAusnahmeModus;
         const isToday=d.toDateString()===heute.toDateString();
         const festerUrlaub=istFesterUrlaub(m.name,t,monat,jahr);
-        let wert=maGespeichert[t]||'';
+        const gespeicherterWert = maGespeichert[t]||'';
+        let wert = gespeicherterWert;
         if(festerUrlaub) wert=getAutoWert(m.name,t,monat,jahr);
-        else if(!wert&&!keinArbeitstag) wert=getAutoWert(m.name,t,monat,jahr);
+        else if(!wert&&!keinArb_gesperrt) wert=getAutoWert(m.name,t,monat,jahr);
         const basis=anwBasisTyp(wert);
-        const nichtEditierbar=we||ft||festerUrlaub||keinArbeitstag;
-        const bg=(we||ft||keinArbeitstag)?'#F0F0F0':(ANW_FARBEN[basis]||'#FAFAFA');
-        const txtC=(we||ft||keinArbeitstag)?'#CCCCCC':(ANW_FARBEN_TEXT[basis]||'#CCCCCC');
+        // Gespeicherte Ausnahme: grau aber Wert sichtbar, mit Edit-Möglichkeit im Ausnahme-Modus
+        const hatAusnahme = keinArbeitstag && !!gespeicherterWert && !we && !ft;
+        const nichtEditierbar=we||ft||festerUrlaub||keinArb_gesperrt;
+        const bg = (we||ft) ? '#F0F0F0'
+                 : keinArb_gesperrt ? (hatAusnahme ? (ANW_FARBEN[anwBasisTyp(gespeicherterWert)]||'#E0E0E0') : '#F0F0F0')
+                 : (ANW_FARBEN[basis]||'#FAFAFA');
+        const txtC = (we||ft) ? '#CCCCCC'
+                   : keinArb_gesperrt ? (hatAusnahme ? (ANW_FARBEN_TEXT[anwBasisTyp(gespeicherterWert)]||'#999') : '#CCCCCC')
+                   : (ANW_FARBEN_TEXT[basis]||'#CCCCCC');
         const outline=isToday?'box-shadow:inset 0 0 0 1.5px var(--red);':'';
-        const lockStyle=festerUrlaub?'border:1.5px solid #1a5276;':'';
+        const lockStyle=festerUrlaub?'border:1.5px solid #1a5276;':
+                        (hatAusnahme&&keinArb_gesperrt?'border:1.5px dashed #f0c040;':'');
 
         if(basis==='U') sumU+=anwZahlenwert(wert);
         else if(['K','KK','SOU','EZ'].includes(basis)) sumAbw+=anwZahlenwert(wert);
         if(basis&&gesamtSummen[basis]!==undefined) gesamtSummen[basis]+=anwZahlenwert(wert);
 
-        const anzeige = (we||ft||keinArbeitstag)?'':(wert||'');
+        // Anzeige: WE/FT leer, Nicht-Arbeitstage ohne Ausnahme leer,
+        // Nicht-Arbeitstage MIT gespeichertem Wert zeigen den Wert (gedimmt)
+        const anzeige = (we||ft) ? ''
+                      : (keinArb_gesperrt && !hatAusnahme) ? ''
+                      : (wert||'');
+        const cursor = nichtEditierbar ? 'not-allowed' : 'pointer';
+        const titel = festerUrlaub
+          ? `${m.name} – Urlaub (fest, nicht änderbar)`
+          : keinArb_gesperrt
+            ? (hatAusnahme ? `${m.name} – Ausnahme: ${gespeicherterWert} eingetragen. Ausnahme-Modus aktivieren zum Ändern.` : `${m.name} – kein Arbeitstag`)
+            : `${m.name} – ${t}.${monat+1}.${jahr}`;
         if(nichtEditierbar){
-          const titel=festerUrlaub?`${m.name} – ${t}.${monat+1}.${jahr} · ${basis==='SOU'?'SOU':'Urlaub'} (fest, nicht änderbar)`:
-            (keinArbeitstag?`${m.name} – kein Arbeitstag`:'');
-          html+=`<td title="${titel}" style="text-align:center; background:${bg}; ${outline}${lockStyle} border-radius:2px; height:20px; padding:0; font-size:9px; font-weight:700; color:${txtC}; font-family:Consolas,monospace; cursor:not-allowed; overflow:hidden;">${anzeige}</td>`;
+          html+=`<td title="${titel}" style="text-align:center; background:${bg}; ${outline}${lockStyle} border-radius:2px; height:20px; padding:0; font-size:9px; font-weight:700; color:${txtC}; font-family:Consolas,monospace; cursor:${cursor}; overflow:hidden; opacity:${hatAusnahme&&keinArb_gesperrt?0.75:1};">${anzeige}</td>`;
         } else {
-          html+=`<td style="text-align:center; background:${bg}; ${outline} border-radius:2px; height:20px; padding:0; cursor:pointer;" title="${m.name} – ${t}.${monat+1}.${jahr}" onclick="anwZelleKlick(this,${jahr},${monat},${t},'${maKey.replace(/'/g,"\\'")}','${wert}')">
+          html+=`<td style="text-align:center; background:${bg}; ${outline}${lockStyle} border-radius:2px; height:20px; padding:0; cursor:pointer;" title="${titel}" onclick="anwZelleKlick(this,${jahr},${monat},${t},'${maKey.replace(/'/g,"\\'")}','${wert}')">
             <span style="font-size:9px; font-weight:700; color:${txtC}; font-family:Consolas,monospace; display:block; line-height:20px;">${anzeige||'·'}</span></td>`;
         }
       }
