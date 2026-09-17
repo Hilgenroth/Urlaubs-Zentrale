@@ -3212,9 +3212,9 @@ function befuelleAnwDropdowns(){
 
 // Anwesenheit wird pro Mitarbeiter und Tag gespeichert:
 // anwesenheit/{jahr}/{monat}/{mitarbeiterName}/{tag}
-// Aktueller Anwesenheits-Listener (wird bei Monatswechsel abgemeldet)
-let _anwListener = null;
-let _anwListenerPfad = null;
+// Lokaler Cache fuer Anwesenheitsdaten – kein Dauerlistener (verhindert Race Condition)
+let _anwMonatCache = {}; // gespeicherte Werte fuer den aktuellen Monat
+let _anwGeladenerPfad = null;
 // Eigener Antraege-Listener fuer die Anwesenheitsliste (unabhaengig von Admin-Cache)
 let _anwAntraegeListener = null;
 
@@ -3225,28 +3225,55 @@ function starteAnwAntraegeListener(){
     snap.forEach(child=>{
       alleAntraegeAnwCache.push({id:child.key, ...child.val()});
     });
-    // Anwesenheitsliste neu rendern sobald neue Daten da sind
+    // Nur rendern wenn Anwesenheits-Tab aktiv und Daten schon geladen
     const anwGrid = document.getElementById('anwesenheitGrid');
-    if(anwGrid && alleAntraegeAnwCache.length > 0){
-      const monat = parseInt(document.getElementById('anwMonat')?.value);
-      const jahr = parseInt(document.getElementById('anwJahr')?.value);
-      if(!isNaN(monat) && !isNaN(jahr)) renderAnwesenheit();
+    const tab = document.getElementById('tab-anwesenheit');
+    if(anwGrid && tab && !tab.classList.contains('hidden') && _anwGeladenerPfad){
+      renderAnwesenheit();
     }
   });
 }
 
 function ladeAnwMonatsDaten(jahr, monat, callback){
   const pfad = 'anwesenheit/'+jahr+'/'+monat;
-  // Alten Listener abmelden wenn Monat wechselt
-  if(_anwListenerPfad && _anwListenerPfad !== pfad && _anwListener){
-    db.ref(_anwListenerPfad).off('value', _anwListener);
-    _anwListener = null;
+  // Neu laden wenn Monat/Jahr wechselt, sonst Cache nutzen
+  if(_anwGeladenerPfad === pfad){
+    callback(_anwMonatCache);
+    return;
   }
-  _anwListenerPfad = pfad;
-  // Dauerhafter Listener: rendert automatisch bei jeder Aenderung
-  _anwListener = db.ref(pfad).on('value', snap=>{
-    callback(snap.exists() ? snap.val() : {});
+  _anwGeladenerPfad = pfad;
+  db.ref(pfad).once('value', snap=>{
+    _anwMonatCache = snap.exists() ? snap.val() : {};
+    callback(_anwMonatCache);
   });
+}
+
+// Einzelne Zelle speichern UND lokalen Cache sofort aktualisieren
+function speichereAnwTagByKey(jahr, monat, maKey, tag, wert){
+  // Sofort lokal updaten (verhindert Flackern)
+  if(!_anwMonatCache[maKey]) _anwMonatCache[maKey] = {};
+  if(wert) _anwMonatCache[maKey][tag] = wert;
+  else delete _anwMonatCache[maKey][tag];
+  // Dann Firebase schreiben (asynchron, kein Re-Render nötig)
+  db.ref('anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+tag).set(wert||null);
+}
+
+// Monatsleeren: Cache zurücksetzen
+async function anwMonatZuruecksetzen(){
+  const monat = parseInt(document.getElementById('anwMonat').value);
+  const jahr  = parseInt(document.getElementById('anwJahr').value);
+  const mNamen = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  if(!confirm(`Wirklich ALLE manuell eingetragenen Werte für ${mNamen[monat]} ${jahr} löschen?\n\nUrlaubstage aus Anträgen bleiben erhalten.`)) return;
+  const pfad = 'anwesenheit/'+jahr+'/'+monat;
+  await anwUndoSnapshot([pfad], `Monat ${mNamen[monat]} ${jahr} geleert`);
+  try{
+    _anwMonatCache = {};
+    _anwGeladenerPfad = pfad; // Cache als geleert markieren
+    await db.ref(pfad).remove();
+    renderAnwesenheit();
+  }catch(err){
+    alert('Fehler: '+err.message);
+  }
 }
 
 function speichereAnwTag(jahr, monat, maName, tag, wert){
@@ -3296,6 +3323,13 @@ function renderAnwesenheit(){
   const monat = parseInt(document.getElementById('anwMonat').value);
   const jahr  = parseInt(document.getElementById('anwJahr').value);
   if(isNaN(monat) || isNaN(jahr)) return;
+
+  // Cache zuruecksetzen wenn Monat/Jahr gewechselt
+  const neuerPfad = 'anwesenheit/'+jahr+'/'+monat;
+  if(_anwGeladenerPfad && _anwGeladenerPfad !== neuerPfad){
+    _anwMonatCache = {};
+    _anwGeladenerPfad = null;
+  }
 
   grid.innerHTML = '<div style="text-align:center; padding:20px; color:var(--gray-400);">Lade…</div>';
 
@@ -3681,7 +3715,14 @@ function anwZelleKlick(td, jahr, monat, tag, maKey, aktuellerWert){
       anwUndoSnapshot([pfad], `${maKey.replace(/_/g,' ')} am ${tag}. ${mN[monat]} → "${v||'gelöscht'}"`).then(()=>{
         speichereAnwTagByKey(jahr,monat,maKey,tag,v);
         popup.remove();
-        renderAnwesenheit();
+        // Nur die eine Zelle sofort visuell aktualisieren (kein Re-Render, kein Flackern)
+        const basis = v ? v.replace('½','') : '';
+        td.style.background = v ? (ANW_FARBEN[basis]||'#FAFAFA') : '#FAFAFA';
+        const span = td.querySelector('span');
+        if(span){
+          span.textContent = v||'·';
+          span.style.color = v ? (ANW_FARBEN_TEXT[basis]||'#CCCCCC') : '#CCCCCC';
+        }
       });
     };
     popup.appendChild(btn);
@@ -3695,9 +3736,6 @@ function anwZelleKlick(td, jahr, monat, tag, maKey, aktuellerWert){
 }
 
 
-function speichereAnwTagByKey(jahr, monat, maKey, tag, wert){
-  db.ref('anwesenheit/'+jahr+'/'+monat+'/'+maKey+'/'+tag).set(wert || null);
-}
 
 function anwHexZuRgb(hex){
   hex = hex.replace('#','');
