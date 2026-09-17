@@ -203,7 +203,7 @@
   }
   .mini-monat td.leer{background:transparent; border-color:transparent;}
   .mini-monat td.we{background:#f7f7f7; color:var(--gray-400); border-color:#eee;}
-  .mini-monat td.feiertag{background:#ececec; border-color:#ddd;}
+  .mini-monat td.feiertag{background:#FFD6E8; border-color:#e0a0c0;}
   .mini-monat td.today{box-shadow:inset 0 0 0 2px var(--red);}
   .mini-monat td.genehmigt{background:#2d8b4f; color:#fff; font-weight:700; border-color:#256f3f;}
   .mini-monat td.offen{background:#fdf3d9; color:var(--warn); font-weight:700; border:1px dashed var(--warn);}
@@ -311,7 +311,7 @@
   }
   .kal-grid tbody td:hover{transform:scale(1.25); z-index:1; position:relative; box-shadow:0 2px 8px rgba(0,0,0,0.15);}
   .kal-grid tbody td.we{background:#f7f7f7; border-color:#eee;}
-  .kal-grid tbody td.feiertag{background:#ececec; border-color:#ddd; color:var(--gray-700);}
+  .kal-grid tbody td.feiertag{background:#FFD6E8; border-color:#e0a0c0; color:#8b0045;}
   .kal-grid tbody td.today{box-shadow:inset 0 0 0 2px var(--red);}
   .kal-grid tbody td.genehmigt{background:#2d8b4f; color:#fff; font-weight:700; border-color:#256f3f;}
   .kal-grid tbody td.offen{background:#fdf3d9; color:var(--warn); font-weight:700; border:1.5px dashed var(--warn);}
@@ -616,7 +616,7 @@
           <span><span class="box" style="background:#fdf3d9; border-color:var(--warn);"></span> Urlaub offen</span>
           <span><span class="box" style="background:#4338ca;"></span> Sonderurlaub</span>
           <span><span class="box" style="background:#2b6cb0;"></span> Betriebsurlaub</span>
-          <span><span class="box" style="background:#ececec;"></span> Feiertag</span>
+          <span><span class="box" style="background:#FFD6E8; border:1px solid #e0a0c0;"></span> <span style="font-size:11px;font-weight:800;color:#8b0045;">F</span> Feiertag</span>
           <span><span class="box" style="border:2px solid var(--red); background:var(--white);"></span> Heute</span>
         </div>
       </div>
@@ -810,7 +810,7 @@
           <span><span class="box" style="background:#4338ca;"></span> Sonderurlaub genehmigt</span>
           <span><span class="box" style="background:#e0e7ff; border-color:#4338ca;"></span> Sonderurlaub offen</span>
           <span><span class="box" style="background:#2b6cb0;"></span> Betriebsurlaub</span>
-          <span><span class="box" style="background:#ececec;"></span> Feiertag</span>
+          <span><span class="box" style="background:#FFD6E8; border:1px solid #e0a0c0;"></span> <span style="font-size:11px;font-weight:800;color:#8b0045;">F</span> Feiertag</span>
           <span><span class="box" style="background:#f7f7f7;"></span> Wochenende</span>
           <span><span class="box" style="border:2px solid var(--red); background:var(--white);"></span> Heute</span>
         </div>
@@ -1618,15 +1618,17 @@ function renderMeinKalender(){
           const isToday = d.getFullYear()===heute.getFullYear() && d.getMonth()===heute.getMonth() && d.getDate()===heute.getDate();
           const arbeitstage = getArbeitstage(currentProfile ? currentProfile.name : null);
           const keinArbeitstag = !istFeiertagOderWochenende(d) && !arbeitstage.includes(d.getDay());
+          const istFT = istFeiertag(d);
+          const istWE = d.getDay()===0 || d.getDay()===6;
           let cls = '';
-          if(d.getDay()===0 || d.getDay()===6) cls = 'we';
-          if(istFeiertag(d)) cls = 'feiertag';
+          if(istWE) cls = 'we';
           if(keinArbeitstag) cls = 'we';
+          if(istFT) cls = 'feiertag'; // Feiertag zuletzt – überschreibt keinArbeitstag
           // Betriebsurlaub nur wenn kein echter Antrag vorhanden
           const treffer = meineAntraegeCache.find(a => a.status!=='abgelehnt' && key>=a.start && key<=a.ende);
-          if(!treffer && istBetriebsurlaub(d) && !keinArbeitstag && d.getDay()!==0 && d.getDay()!==6 && !istFeiertag(d)) cls = 'betriebsurlaub';
+          if(!treffer && istBetriebsurlaub(d) && !keinArbeitstag && !istWE && !istFT) cls = 'betriebsurlaub';
           // Urlaub nur einfärben wenn echter Werktag des Mitarbeiters
-          if(treffer && !keinArbeitstag && d.getDay()!==0 && d.getDay()!==6 && !istFeiertag(d)){
+          if(treffer && !keinArbeitstag && !istWE && !istFT){
             const istSou = treffer.art==='sonderurlaub';
             cls = treffer.status==='genehmigt' ? (istSou?'sou':'genehmigt') : 'offen';
             if(treffer.status==='genehmigt' && !istSou){
@@ -1637,7 +1639,9 @@ function renderMeinKalender(){
             }
           }
           if(isToday) cls += ' today';
-          html += '<td class="'+cls+'" title="'+formatDatum(key)+(treffer?' · '+labelStatus(treffer.status):'')+'">'+tag+'</td>';
+          // Feiertag: pink mit "F" anzeigen
+          const zellenInhalt = istFT ? '<span style="font-size:8px;font-weight:800;color:#8b0045;">F</span>' : String(tag);
+          html += '<td class="'+cls+'" style="'+(istFT?'background:#FFD6E8;':'')+(isToday?'':'')+'position:relative;" title="'+formatDatum(key)+(istFT?' · Feiertag':'')+(treffer?' · '+labelStatus(treffer.status):'')+'">'+zellenInhalt+'</td>';
           tag++;
         }
       }
@@ -2227,8 +2231,8 @@ function renderKalender(){
       // Priorität: Wochenende/Feiertag > Nicht-Arbeitstag > Betriebsurlaub > individueller Antrag
       const keinArbeitstag = !istFeiertag(d) && d.getDay()!==0 && d.getDay()!==6 && !getArbeitstage(m.name).includes(d.getDay());
       if(d.getDay()===0 || d.getDay()===6) cls = 'we';
-      if(istFeiertag(d)) cls = 'feiertag';
       if(keinArbeitstag) cls = 'we';
+      if(istFeiertag(d)) cls = 'feiertag'; // zuletzt – nicht überschreibbar
 
       const treffer = !keinArbeitstag && d.getDay()!==0 && d.getDay()!==6 && !istFeiertag(d)
         ? alleAntraegeCache.find(a=> a.name===m.name && a.status!=='abgelehnt' && key>=a.start && key<=a.ende)
@@ -2247,7 +2251,10 @@ function renderKalender(){
       }
       if(isToday) cls += ' today';
 
-      tbody += '<td class="'+cls+'" title="'+m.name+' – '+formatDatum(key)+(treffer?' · '+(treffer.art==='sonderurlaub'?'Sonderurlaub · ':'')+labelStatus(treffer.status):(cls.includes('betriebsurlaub')?' · Betriebsurlaub':''))+'">'+inhalt+'</td>';
+      // Feiertag pink mit "F" kennzeichnen
+      const kal_zellenInhalt = (cls==='feiertag') ? '<span style="font-size:8px;font-weight:800;color:#8b0045;">F</span>' : inhalt;
+      const kal_feiertag_style = (cls==='feiertag') ? 'background:#FFD6E8;' : '';
+      tbody += '<td class="'+cls+'" style="'+kal_feiertag_style+'" title="'+m.name+' – '+formatDatum(key)+(cls==='feiertag'?' · Feiertag':'')+(treffer?' · '+(treffer.art==='sonderurlaub'?'Sonderurlaub · ':'')+labelStatus(treffer.status):(cls.includes('betriebsurlaub')?' · Betriebsurlaub':''))+'">'+kal_zellenInhalt+'</td>';
     }
     tbody += '</tr>';
   });
@@ -3404,9 +3411,11 @@ function renderAnwesenheit(){
         const lockStyle=festerUrlaub?'border:1.5px solid #1a5276;':
                         (hatAusnahme&&keinArb_gesperrt?'border:1.5px dashed #f0c040;':'');
 
-        if(basis==='U') sumU+=anwZahlenwert(wert);
-        else if(['K','KK','SOU','EZ'].includes(basis)) sumAbw+=anwZahlenwert(wert);
-        if(basis&&gesamtSummen[basis]!==undefined) gesamtSummen[basis]+=anwZahlenwert(wert);
+        if(!we && !ft && !keinArb_gesperrt){
+          if(basis==='U') sumU+=anwZahlenwert(wert);
+          else if(['K','KK','SOU','EZ'].includes(basis)) sumAbw+=anwZahlenwert(wert);
+          if(basis&&gesamtSummen[basis]!==undefined) gesamtSummen[basis]+=anwZahlenwert(wert);
+        }
 
         // Anzeige: WE/FT leer, Nicht-Arbeitstage ohne Ausnahme leer,
         // Nicht-Arbeitstage MIT gespeichertem Wert zeigen den Wert (gedimmt)
