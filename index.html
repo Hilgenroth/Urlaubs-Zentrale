@@ -505,6 +505,23 @@
 
 <!-- ===================== APP ===================== -->
 <div id="app" class="hidden">
+
+<!-- Backup-Hinweis Popup (erscheint einmal täglich) -->
+<div id="backupHinweisOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9500; align-items:center; justify-content:center;">
+  <div style="background:#fff; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,0.3); padding:32px 36px; max-width:440px; width:90%; text-align:center;">
+    <div style="font-size:40px; margin-bottom:14px;">💾</div>
+    <h2 style="font-size:20px; font-weight:800; color:#1a1a1a; margin-bottom:10px;">Tägliches Backup</h2>
+    <p style="font-size:14px; color:#555; line-height:1.6; margin-bottom:20px;">
+      Bitte erstelle heute ein Backup der Urlaubszentrale und speichere es in deinem OneDrive-Ordner.<br><br>
+      <strong style="color:#C8102E;">RH Sundern → Urlaubszentrale → Backup</strong>
+    </p>
+    <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+      <button onclick="backupJetzt()" style="background:#C8102E; color:#fff; border:none; border-radius:8px; padding:12px 24px; font-size:14px; font-weight:700; cursor:pointer;">📥 Backup jetzt erstellen</button>
+      <button onclick="backupHinweisSchliessen()" style="background:#f0f0f0; color:#555; border:none; border-radius:8px; padding:12px 24px; font-size:14px; font-weight:700; cursor:pointer;">Später erinnern</button>
+    </div>
+    <div style="margin-top:12px; font-size:12px; color:#aaa;">Wird einmal täglich angezeigt</div>
+  </div>
+</div>
   <header class="topbar">
     <div class="brand">
       <span class="bar"></span>
@@ -916,16 +933,7 @@
             <button class="btn-primary" onclick="backupErstellen()">📥 Backup jetzt erstellen</button>
             <span id="backupStatus" class="note"></span>
           </div>
-          <div style="margin-top:12px; padding:10px 14px; background:#f0f7ff; border-radius:6px; border-left:3px solid #2b6cb0;">
-            <div style="font-size:12px; font-weight:700; color:#2b6cb0; margin-bottom:6px;">🔄 Automatisches Backup via Power Automate</div>
-            <div class="note" style="margin-bottom:8px;">Webhook-URL aus Power Automate hier eintragen – dann wird täglich automatisch ein Backup in OneDrive gespeichert.</div>
-            <div class="inline-form">
-              <input type="text" id="backupWebhookUrl" placeholder="Power Automate HTTP-Trigger URL" style="flex:2; font-size:12px;">
-              <button class="btn-secondary" onclick="backupWebhookSpeichern()">Speichern</button>
-              <button class="btn-secondary" onclick="backupWebhookTesten()">Test senden</button>
-            </div>
-            <div id="backupWebhookStatus" class="note" style="margin-top:6px;"></div>
-          </div>
+
         </div>
 
         <h3>🎨 Farben der Anwesenheitsliste</h3>
@@ -1301,6 +1309,8 @@ function zeigeApp(){
     ladeRollen();
     ladePasswortStatus();
   }
+  // Backup-Hinweis einmal täglich anzeigen (effSuperadmin ist hier bereits gesetzt)
+  backupHinweisZeigen();
 }
 function show(id){ document.getElementById(id).classList.remove('hidden'); }
 function hide(id){ document.getElementById(id).classList.add('hidden'); }
@@ -2605,56 +2615,41 @@ async function backupErstellen(){
     URL.revokeObjectURL(a.href);
     status.textContent = `✓ Backup erstellt (${datum}) – bitte in OneDrive speichern.`;
     // Webhook benachrichtigen falls konfiguriert
-    const wh = await db.ref('settings/backupWebhook').once('value');
-    if(wh.exists()) sendeBackupWebhook(wh.val(), backup, datum);
+
   }catch(err){
     status.textContent = 'Fehler: ' + err.message;
   }
 }
 
-async function backupWebhookSpeichern(){
-  const url = document.getElementById('backupWebhookUrl').value.trim();
-  const st  = document.getElementById('backupWebhookStatus');
-  await db.ref('settings/backupWebhook').set(url||null);
-  st.textContent = url ? '✓ Webhook gespeichert.' : 'Webhook entfernt.';
-  setTimeout(()=>st.textContent='', 3000);
+// Backup-Einstellungen laden (Placeholder)
+function backupEinstellungenLaden(){ /* nichts zu laden */ }
+
+function backupHinweisZeigen(){
+  // Nur einmal täglich anzeigen – gespeichert in localStorage
+  const heute = new Date().toISOString().slice(0,10);
+  const letzterHinweis = localStorage.getItem('backupHinweisGezeigt');
+  if(letzterHinweis === heute) return; // heute schon gezeigt
+  // Nur für Superadmin (Variable muss bereits gesetzt sein)
+  if(typeof effSuperadmin === 'undefined' || !effSuperadmin) return;
+  // Mit 2 Sekunden Verzögerung nach Login anzeigen
+  setTimeout(()=>{
+    const overlay = document.getElementById('backupHinweisOverlay');
+    if(overlay) overlay.style.display = 'flex';
+  }, 2000);
 }
 
-async function backupWebhookTesten(){
-  const url = document.getElementById('backupWebhookUrl').value.trim();
-  const st  = document.getElementById('backupWebhookStatus');
-  if(!url){ st.textContent = 'Bitte zuerst eine Webhook-URL eintragen.'; return; }
-  st.textContent = 'Sende Test…';
-  const ok = await sendeBackupWebhook(url, {test:true, datum: new Date().toISOString()}, 'TEST');
-  st.textContent = ok ? '✓ Test erfolgreich gesendet.' : '✗ Fehler – URL prüfen.';
+function backupHinweisSchliessen(){
+  const overlay = document.getElementById('backupHinweisOverlay');
+  if(overlay) overlay.style.display = 'none';
+  // Als heute gezeigt markieren
+  localStorage.setItem('backupHinweisGezeigt', new Date().toISOString().slice(0,10));
 }
 
-async function sendeBackupWebhook(url, daten, datum){
-  try{
-    await fetch(url, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        titel:   `Urlaubszentrale Backup ${datum}`,
-        datum,
-        dateiname: `Urlaubszentrale_Backup_${datum}.json`,
-        daten
-      })
-    });
-    return true;
-  }catch(e){
-    console.error('Backup Webhook Fehler:', e);
-    return false;
-  }
+async function backupJetzt(){
+  backupHinweisSchliessen();
+  await backupErstellen();
 }
 
-// Backup-Einstellungen beim Öffnen laden
-function backupEinstellungenLaden(){
-  db.ref('settings/backupWebhook').once('value', snap=>{
-    const el = document.getElementById('backupWebhookUrl');
-    if(el && snap.exists()) el.value = snap.val();
-  });
-}
 
 
 function ladeNtfyTopic(){
