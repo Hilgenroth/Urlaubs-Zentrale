@@ -931,6 +931,10 @@
           <div class="note" style="margin-bottom:10px;">Erstellt eine JSON-Sicherungsdatei aller Urlaubsanträge, Anwesenheitsdaten und Stammdaten. Datei bitte manuell in deinem OneDrive-Backup-Ordner speichern.</div>
           <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
             <button class="btn-primary" onclick="backupErstellen()">📥 Backup jetzt erstellen</button>
+            <label class="btn-secondary" style="cursor:pointer; padding:8px 16px; border-radius:6px; font-weight:700; font-size:13px;">
+              📤 Backup wiederherstellen
+              <input type="file" accept=".json" onchange="backupWiederherstellen(this)" style="display:none;">
+            </label>
             <span id="backupStatus" class="note"></span>
           </div>
 
@@ -2622,8 +2626,67 @@ async function backupErstellen(){
   }
 }
 
-// Backup-Einstellungen laden (Placeholder)
-function backupEinstellungenLaden(){ /* nichts zu laden */ }
+async function backupWiederherstellen(input){
+  const file = input.files[0];
+  if(!file) return;
+  const status = document.getElementById('backupStatus');
+  status.textContent = 'Lese Backup-Datei…';
+
+  try{
+    const text = await file.text();
+    const backup = JSON.parse(text);
+
+    // Validierung
+    if(!backup.antraege && !backup.anwesenheit){
+      status.textContent = '✗ Ungültige Backup-Datei – keine Anträge oder Anwesenheitsdaten gefunden.';
+      return;
+    }
+
+    const datum = backup.erstellt ? new Date(backup.erstellt).toLocaleDateString('de-DE') : 'unbekannt';
+    const anzahlAntraege = backup.antraege ? Object.keys(backup.antraege).length : 0;
+
+    const bestaetigt = confirm(
+      `Backup vom ${datum} wiederherstellen?\n\n` +
+      `Enthält:\n` +
+      `• ${anzahlAntraege} Urlaubsanträge\n` +
+      `• Anwesenheitsdaten\n` +
+      (backup.settings ? '• Einstellungen (Farben, ntfy etc.)\n' : '') +
+      `\n⚠️ ACHTUNG: Bestehende Daten werden ÜBERSCHRIEBEN.\n` +
+      `Neuere Einträge die nach dem Backup-Datum gemacht wurden gehen verloren!\n\n` +
+      `Fortfahren?`
+    );
+    if(!bestaetigt){ status.textContent = 'Abgebrochen.'; input.value=''; return; }
+
+    status.textContent = 'Stelle Daten wieder her…';
+
+    // Anträge wiederherstellen
+    if(backup.antraege){
+      await db.ref('antraege').set(backup.antraege);
+    }
+    // Anwesenheit wiederherstellen
+    if(backup.anwesenheit){
+      await db.ref('anwesenheit').set(backup.anwesenheit);
+    }
+    // Stammdaten wiederherstellen (nur wenn vorhanden und nicht leer)
+    if(backup.stammdaten && Object.keys(backup.stammdaten).length > 0){
+      await db.ref('stammdaten').set(backup.stammdaten);
+    }
+    // Settings wiederherstellen (optional)
+    if(backup.settings){
+      const settingsOk = confirm('Sollen auch die Einstellungen (Farben, E-Mail, ntfy) wiederhergestellt werden?');
+      if(settingsOk) await db.ref('settings').set(backup.settings);
+    }
+
+    status.textContent = `✓ Wiederherstellung abgeschlossen (${anzahlAntraege} Anträge). Seite wird neu geladen…`;
+    setTimeout(()=>location.reload(), 2500);
+
+  }catch(err){
+    status.textContent = '✗ Fehler: ' + err.message;
+  }
+  input.value = ''; // Input zurücksetzen
+}
+
+
 
 function backupHinweisZeigen(){
   // Nur einmal täglich anzeigen – gespeichert in localStorage
