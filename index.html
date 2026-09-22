@@ -1147,6 +1147,7 @@ function emailKey(email){
 let currentUser = null;
 let currentProfile = null;
 let berechtigung = {admin:false, export:false, superadmin:false};
+let effSuperadmin = false; // global damit Backup-Hinweis darauf zugreifen kann
 let meineAntraegeCache = [];
 let alleAntraegeCache = [];
 let alleAntraegeAnwCache = []; // fuer Anwesenheitsliste – immer alle, unabhaengig von Rolle
@@ -1246,7 +1247,7 @@ function zeigeApp(){
 
   const effAdmin = berechtigung.admin || berechtigung.superadmin;
   const effExport = berechtigung.export || berechtigung.superadmin;
-  const effSuperadmin = berechtigung.superadmin;
+  effSuperadmin = berechtigung.superadmin; // global
   const nurUebersicht = !!berechtigung.nurUebersicht;
 
   const kannFuerAndere = !!(berechtigung.fuerAndereEintragen || berechtigung.superadmin);
