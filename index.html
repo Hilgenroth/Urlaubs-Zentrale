@@ -516,10 +516,14 @@
       <strong style="color:#C8102E;">RH Sundern → Urlaubszentrale → Backup</strong>
     </p>
     <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-      <button onclick="backupJetzt()" style="background:#C8102E; color:#fff; border:none; border-radius:8px; padding:12px 24px; font-size:14px; font-weight:700; cursor:pointer;">📥 Backup jetzt erstellen</button>
-      <button onclick="backupHinweisSchliessen()" style="background:#f0f0f0; color:#555; border:none; border-radius:8px; padding:12px 24px; font-size:14px; font-weight:700; cursor:pointer;">Später erinnern</button>
+      <button onclick="backupJetzt()" style="background:#C8102E; color:#fff; border:none; border-radius:8px; padding:12px 24px; font-size:14px; font-weight:700; cursor:pointer;">📥 JSON Backup</button>
+      <button onclick="excelExportJetzt()" style="background:#1a7a3c; color:#fff; border:none; border-radius:8px; padding:12px 24px; font-size:14px; font-weight:700; cursor:pointer;">📊 Excel Export</button>
+      <button onclick="alleBackupsJetzt()" style="background:#1a5276; color:#fff; border:none; border-radius:8px; padding:12px 24px; font-size:14px; font-weight:700; cursor:pointer;">⬇️ Beides herunterladen</button>
     </div>
-    <div style="margin-top:12px; font-size:12px; color:#aaa;">Wird einmal täglich angezeigt</div>
+    <div style="margin-top:10px;">
+      <button onclick="backupHinweisSchliessen()" style="background:none; border:none; color:#aaa; font-size:13px; cursor:pointer; text-decoration:underline;">Später erinnern</button>
+    </div>
+    <div style="margin-top:6px; font-size:12px; color:#aaa;">Wird einmal täglich angezeigt</div>
   </div>
 </div>
   <header class="topbar">
@@ -931,6 +935,7 @@
           <div class="note" style="margin-bottom:10px;">Erstellt eine JSON-Sicherungsdatei aller Urlaubsanträge, Anwesenheitsdaten und Stammdaten. Datei bitte manuell in deinem OneDrive-Backup-Ordner speichern.</div>
           <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
             <button class="btn-primary" onclick="backupErstellen()">📥 Backup jetzt erstellen</button>
+            <button class="btn-primary" style="background:#1a7a3c;" onclick="stammdatenExcelExport()">📊 Excel-Export</button>
             <label class="btn-secondary" style="cursor:pointer; padding:8px 16px; border-radius:6px; font-weight:700; font-size:13px;">
               📤 Backup wiederherstellen
               <input type="file" accept=".json" onchange="backupWiederherstellen(this)" style="display:none;">
@@ -2624,6 +2629,135 @@ async function backupErstellen(){
   }catch(err){
     status.textContent = 'Fehler: ' + err.message;
   }
+}
+
+async function stammdatenExcelExport(){
+  const status = document.getElementById('backupStatus');
+  if(status) status.textContent = 'Erstelle Excel…';
+  try{
+    const [stammdatenSnap, antraegeSnap] = await Promise.all([
+      db.ref('stammdaten').once('value'),
+      db.ref('antraege').once('value'),
+    ]);
+    const stammdaten = stammdatenSnap.exists() ? stammdatenSnap.val() : {};
+    const antraege   = antraegeSnap.exists()   ? antraegeSnap.val()   : {};
+
+    // Genommene Urlaubstage 2026 pro Mitarbeiter
+    const genommen = {};
+    Object.values(antraege).forEach(a=>{
+      if(a.status!=='genehmigt' || (a.art||'urlaub')==='sonderurlaub') return;
+      if(!a.start || !a.start.startsWith('2026')) return;
+      genommen[a.name] = (genommen[a.name]||0) + (a.tage||0);
+    });
+
+    const heute = new Date().toLocaleDateString('de-DE');
+    const datum  = new Date().toISOString().slice(0,10);
+
+    // Daten als Array of objects fuer SheetJS
+    const rows = MITARBEITER.map(m=>{
+      const sd = stammdaten[m.name] || STAMMDATEN_FALLBACK_2026[m.name] || {restVorjahr:0, anspruch:30};
+      const rv = Number(sd.restVorjahr) || 0;
+      const an = Number(sd.anspruch)    || 30;
+      const gn = Number(genommen[m.name]) || 0;
+      const re = rv + an - gn;
+      return {
+        'Mitarbeiter':        m.name,
+        'Standort':           m.standort,
+        'Rest Vorjahr':       rv,
+        'Jahresanspruch 2026': an,
+        'Genommen 2026':      gn,
+        'Resturlaub':         re
+      };
+    });
+
+    // SheetJS XLSX
+    const ws = XLSX.utils.json_to_sheet(rows);
+    // Spaltenbreiten
+    ws['!cols'] = [{wch:25},{wch:14},{wch:14},{wch:20},{wch:16},{wch:14}];
+    // Zahlenformat fuer alle numerischen Zellen (Dezimalzahl, kein Datum)
+    const numFmt = '0.##';
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for(let R=range.s.r+1; R<=range.e.r; R++){
+      for(let C=2; C<=5; C++){
+        const cell = ws[XLSX.utils.encode_cell({r:R,c:C})];
+        if(cell && cell.t==='n') cell.z = numFmt;
+      }
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    // Reiter 1: Resturlaub-Übersicht – sauber ohne doppelte Header
+    const wsRest = XLSX.utils.aoa_to_sheet([
+      [`Urlaubsübersicht RH Sundern – Stand: ${heute}`],
+      [],
+      ['Mitarbeiter','Standort','Rest Vorjahr','Jahresanspruch 2026','Genommen 2026','Resturlaub'],
+      ...rows.map(r=>[r['Mitarbeiter'],r['Standort'],r['Rest Vorjahr'],r['Jahresanspruch 2026'],r['Genommen 2026'],r['Resturlaub']])
+    ]);
+    wsRest['!cols'] = [{wch:25},{wch:14},{wch:14},{wch:20},{wch:16},{wch:14}];
+    // Zahlen korrekt formatieren: ganze Zahlen ohne Nachkommastellen, Dezimalzahlen mit 1 Stelle
+    const restRange = XLSX.utils.decode_range(wsRest['!ref']);
+    for(let R=restRange.s.r; R<=restRange.e.r; R++){
+      for(let C=2; C<=5; C++){
+        const cellAddr = XLSX.utils.encode_cell({r:R,c:C});
+        const cell = wsRest[cellAddr];
+        if(cell && cell.t==='n'){
+          // Ganzzahlig -> kein Dezimal, sonst eine Stelle
+          cell.z = Number.isInteger(cell.v) ? '0' : '0.0';
+        }
+      }
+    }
+    XLSX.utils.book_append_sheet(wb, wsRest, 'Resturlaub');
+
+    // Reiter 2: Monatsübersicht (alle Anträge nach Monat)
+    const monate = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+    const moRowsHeader = ['Mitarbeiter','Standort', ...monate, 'Gesamt'];
+    const moRows = [moRowsHeader];
+
+    MITARBEITER.forEach(m=>{
+      const tagePro = new Array(12).fill(0);
+      Object.values(antraege).forEach(a=>{
+        if(a.name!==m.name || a.status!=='genehmigt') return;
+        if(!a.start || !a.start.startsWith('2026')) return;
+        const mo = parseInt(a.start.split('-')[1]) - 1;
+        if(mo>=0 && mo<=11) tagePro[mo] += (a.tage||0);
+      });
+      const gesamt = tagePro.reduce((s,v)=>s+v, 0);
+      moRows.push([m.name, m.standort, ...tagePro.map(v=>v||''), gesamt||'']);
+    });
+
+    const ws2 = XLSX.utils.aoa_to_sheet(moRows);
+    ws2['!cols'] = [{wch:25},{wch:14}, ...new Array(12).fill({wch:9}), {wch:9}];
+    // Zahlenformat für alle Monatsspalten
+    const range2 = XLSX.utils.decode_range(ws2['!ref']);
+    for(let R=1; R<=range2.e.r; R++){
+      for(let C=2; C<=14; C++){
+        const cell = ws2[XLSX.utils.encode_cell({r:R,c:C})];
+        if(cell && cell.t==='n'){
+          cell.z = Number.isInteger(cell.v) ? '0' : '0.0';
+        }
+      }
+    }
+    XLSX.utils.book_append_sheet(wb, ws2, 'Monatsübersicht');
+
+    XLSX.writeFile(wb, `Urlaubsuebersicht_${datum}.xlsx`);
+    if(status) status.textContent = `✓ Excel erstellt (${datum}) – bitte in OneDrive speichern.`;
+  }catch(err){
+    if(status) status.textContent = 'Fehler: ' + err.message;
+    console.error(err);
+  }
+}
+
+async function excelExportJetzt(){
+  backupHinweisSchliessen();
+  await stammdatenExcelExport();
+}
+
+async function alleBackupsJetzt(){
+  backupHinweisSchliessen();
+  await backupErstellen();
+  // Kurze Pause damit Browser den zweiten Download nicht blockiert
+  await new Promise(r => setTimeout(r, 1500));
+  await stammdatenExcelExport();
 }
 
 async function backupWiederherstellen(input){
