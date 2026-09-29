@@ -942,6 +942,18 @@
             </label>
             <span id="backupStatus" class="note"></span>
           </div>
+          <div style="margin-top:14px; padding:12px 16px; background:#fff8e1; border:1px solid #f0c040; border-radius:8px;">
+            <div style="font-size:13px; font-weight:700; color:#7d5a00; margin-bottom:6px;">🔄 Jahreswechsel</div>
+            <div class="note" style="margin-bottom:10px;">Überträgt den aktuellen Resturlaub jedes Mitarbeiters als "Rest Vorjahr" ins neue Jahr. Bitte erst ein Backup erstellen!</div>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+              <span style="font-size:13px;">Aktuelles Jahr:</span>
+              <select id="jahreswechselVon" style="padding:6px 10px; border-radius:5px; border:1px solid #ddd; font-size:13px;"></select>
+              <span style="font-size:13px;">→ neues Jahr:</span>
+              <select id="jahreswechselNach" style="padding:6px 10px; border-radius:5px; border:1px solid #ddd; font-size:13px;"></select>
+              <button class="btn-primary" style="background:#7d5a00;" onclick="jahreswechselDurchfuehren()">🔄 Jahreswechsel durchführen</button>
+            </div>
+            <div id="jahreswechselStatus" class="note" style="margin-top:8px;"></div>
+          </div>
 
         </div>
 
@@ -2597,6 +2609,84 @@ async function rolleLoeschen(key){
 /* =========================================================================
    BACKUP-FUNKTIONEN
    ========================================================================= */
+function backupEinstellungenLaden(){
+  const vonSel  = document.getElementById('jahreswechselVon');
+  const nachSel = document.getElementById('jahreswechselNach');
+  if(!vonSel || !nachSel) return;
+  const jetzt = new Date().getFullYear();
+  vonSel.innerHTML  = [jetzt-1,jetzt,jetzt+1].map(j=>`<option value="${j}"${j===jetzt?' selected':''}>${j}</option>`).join('');
+  nachSel.innerHTML = [jetzt,jetzt+1,jetzt+2].map(j=>`<option value="${j}"${j===jetzt+1?' selected':''}>${j}</option>`).join('');
+}
+
+async function jahreswechselDurchfuehren(){
+  const vonJahr  = parseInt(document.getElementById('jahreswechselVon').value);
+  const nachJahr = parseInt(document.getElementById('jahreswechselNach').value);
+  const st = document.getElementById('jahreswechselStatus');
+
+  if(vonJahr >= nachJahr){
+    st.textContent = '✗ Das neue Jahr muss größer als das aktuelle Jahr sein.';
+    return;
+  }
+
+  const bestaetigt = confirm(
+    `Jahreswechsel ${vonJahr} → ${nachJahr} durchführen?\n\n` +
+    `Der Resturlaub jedes Mitarbeiters aus ${vonJahr} wird als "Rest Vorjahr ${nachJahr}" gespeichert.\n\n` +
+    `⚠️ Bitte vorher ein Backup erstellen!\n\nFortfahren?`
+  );
+  if(!bestaetigt){ st.textContent = 'Abgebrochen.'; return; }
+
+  st.textContent = 'Berechne Resturlaub…';
+
+  try{
+    const [stammdatenSnap, antraegeSnap] = await Promise.all([
+      db.ref('stammdaten').once('value'),
+      db.ref('antraege').once('value'),
+    ]);
+    const stammdaten = stammdatenSnap.exists() ? stammdatenSnap.val() : {};
+    const antraege   = antraegeSnap.exists()   ? antraegeSnap.val()   : {};
+
+    // Genommene Urlaubstage im vonJahr pro Mitarbeiter
+    const genommen = {};
+    Object.values(antraege).forEach(a=>{
+      if(a.status!=='genehmigt' || (a.art||'urlaub')==='sonderurlaub') return;
+      if(!a.start || !a.start.startsWith(String(vonJahr))) return;
+      genommen[a.name] = (genommen[a.name]||0) + (a.tage||0);
+    });
+
+    // Resturlaub berechnen und ins neue Jahr schreiben
+    const updates = {};
+    MITARBEITER.forEach(m=>{
+      const key = m.name.replace(/[.#$[\]\/]/g,'_');
+      // Stammdaten: erst im jahresspezifischen Node suchen, dann im allgemeinen
+      const sdJahr = stammdaten[vonJahr]?.[key] || stammdaten[vonJahr]?.[m.name];
+      const sdAllg = stammdaten[key] || stammdaten[m.name];
+      const sd     = sdJahr || sdAllg || STAMMDATEN_FALLBACK_2026[m.name] || {restVorjahr:0, anspruch:30};
+      const rv  = Number(sd.restVorjahr) || 0;
+      const an  = Number(sd.anspruch)    || 30;
+      const gn  = Number(genommen[m.name]) || 0;
+      const neu = Math.max(0, rv + an - gn); // Resturlaub → neuer Rest Vorjahr
+      updates[`stammdaten/${nachJahr}/${key}/restVorjahr`] = neu;
+      updates[`stammdaten/${nachJahr}/${key}/anspruch`]    = an;
+    });
+
+    // Test: Vorschau ausgeben bevor gespeichert wird
+    const preview = MITARBEITER.map(m=>{
+      const key = m.name.replace(/[.#$[\]\/]/g,'_');
+      return `${m.name}: ${updates['stammdaten/'+nachJahr+'/'+key+'/restVorjahr']} Tage`;
+    });
+    console.log('Jahreswechsel Vorschau:', preview);
+
+    await db.ref('/').update(updates);
+
+    st.innerHTML = `✓ Jahreswechsel ${vonJahr} → ${nachJahr} abgeschlossen für ${MITARBEITER.length} Mitarbeiter.<br>
+      <span style="font-size:12px; color:#555;">Bitte in Einstellungen → Stammdaten → Jahr ${nachJahr} prüfen und Jahresanspruch ggf. anpassen.</span>`;
+
+  }catch(err){
+    st.textContent = '✗ Fehler: ' + err.message;
+    console.error('Jahreswechsel Fehler:', err);
+  }
+}
+
 async function backupErstellen(){
   const status = document.getElementById('backupStatus');
   status.textContent = 'Lade Daten…';
