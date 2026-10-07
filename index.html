@@ -2803,16 +2803,55 @@ async function stammdatenExcelExport(){
     const moRowsHeader = ['Mitarbeiter','Standort', ...monate, 'Gesamt'];
     const moRows = [moRowsHeader];
 
+    // Hilfsfunktion: NRW-Feiertage 2026
+    function getNRWFeiertage2026(){
+      const fe = new Set();
+      const add = (m,d) => fe.add(`2026-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+      // Ostern 2026: 5. April
+      add(1,1); add(4,3); add(4,5); add(4,6); add(5,1); add(5,14); add(5,24); add(5,25); add(6,4); add(10,3); add(11,1); add(12,25); add(12,26);
+      return fe;
+    }
+    const feiertage2026 = getNRWFeiertage2026();
+
+    // Taggenau auf Monate aufteilen
+    function verteileAufMonate(startStr, endStr, gesamtTage){
+      const tagePro = new Array(12).fill(0);
+      if(!startStr || !endStr) return tagePro;
+      const start = new Date(startStr + 'T00:00:00');
+      const end   = new Date(endStr   + 'T00:00:00');
+      let gezaehlt = 0;
+      const cur = new Date(start);
+      while(cur <= end){
+        const dow = cur.getDay();
+        const ds = cur.toISOString().slice(0,10);
+        if(dow !== 0 && dow !== 6 && !feiertage2026.has(ds)){
+          tagePro[cur.getMonth()] += 1;
+          gezaehlt++;
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+      // Proportionaler Korrekturfaktor falls a.tage abweicht (z.B. halbe Tage)
+      if(gezaehlt > 0 && Math.abs(gezaehlt - gesamtTage) > 0.1){
+        const f = gesamtTage / gezaehlt;
+        return tagePro.map(v => v > 0 ? Math.round(v * f * 2) / 2 : 0);
+      }
+      return tagePro;
+    }
+
     MITARBEITER.forEach(m=>{
       const tagePro = new Array(12).fill(0);
       Object.values(antraege).forEach(a=>{
-        if(a.name!==m.name || a.status!=='genehmigt') return;
-        if(!a.start || !a.start.startsWith('2026')) return;
-        const mo = parseInt(a.start.split('-')[1]) - 1;
-        if(mo>=0 && mo<=11) tagePro[mo] += (a.tage||0);
+        if(a.name !== m.name || a.status !== 'genehmigt') return;
+        if(!a.start) return;
+        const endStr = a.end || a.start;
+        // Anträge einbeziehen, die 2026 berühren
+        if(!a.start.startsWith('2026') && !endStr.startsWith('2026')) return;
+        const mono = verteileAufMonate(a.start, endStr, a.tage || 0);
+        mono.forEach((v, i) => { tagePro[i] += v; });
       });
-      const gesamt = tagePro.reduce((s,v)=>s+v, 0);
-      moRows.push([m.name, m.standort, ...tagePro.map(v=>v||''), gesamt||'']);
+      const gerundet = tagePro.map(v => Math.round(v * 2) / 2);
+      const gesamt = gerundet.reduce((s, v) => s + v, 0);
+      moRows.push([m.name, m.standort, ...gerundet.map(v => v || ''), gesamt || '']);
     });
 
     const ws2 = XLSX.utils.aoa_to_sheet(moRows);
