@@ -2843,7 +2843,7 @@ async function stammdatenExcelExport(){
       Object.values(antraege).forEach(a=>{
         if(a.name !== m.name || a.status !== 'genehmigt') return;
         if(!a.start) return;
-        const endStr = a.end || a.start;
+        const endStr = a.ende || a.end || a.start;
         // Anträge einbeziehen, die 2026 berühren
         if(!a.start.startsWith('2026') && !endStr.startsWith('2026')) return;
         const mono = verteileAufMonate(a.start, endStr, a.tage || 0);
