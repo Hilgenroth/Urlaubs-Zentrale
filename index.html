@@ -957,6 +957,25 @@
 
         </div>
 
+        <div class="settings-section">
+          <h3>🏖️ Betriebsurlaub</h3>
+          <div class="note" style="margin-bottom:10px;">Hier kannst du Betriebsurlaub-Zeiträume für das jeweilige Jahr eintragen. Diese werden im Kalender blau markiert und bei der Urlaubsberechnung berücksichtigt.</div>
+          <div class="filter-row" style="margin-bottom:12px;">
+            <label style="margin:0; text-transform:none; font-weight:600;">Jahr:</label>
+            <select id="buJahr" onchange="betriebsurlaubLaden()"></select>
+          </div>
+          <table style="width:100%; margin-bottom:12px;" id="betriebsurlaubTabelle">
+            <thead><tr><th>Von</th><th>Bis</th><th></th></tr></thead>
+            <tbody id="betriebsurlaubBody"></tbody>
+          </table>
+          <div class="inline-form" style="margin-top:8px;">
+            <div><label>Von</label><input type="date" id="buVon"></div>
+            <div><label>Bis</label><input type="date" id="buBis"></div>
+            <div style="flex:0; align-self:flex-end;"><button class="btn-primary" onclick="betriebsurlaubHinzufuegen()">Hinzufügen</button></div>
+          </div>
+          <div id="betriebsurlaubStatus" class="note" style="margin-top:8px;"></div>
+        </div>
+
         <h3>🎨 Farben der Anwesenheitsliste</h3>
           <div class="note" style="margin-bottom:12px;">Hintergrundfarbe und Textfarbe für jeden Status individuell anpassen. Änderungen werden sofort gespeichert und überall übernommen.</div>
           <div id="farbEditorGrid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px;"></div>
@@ -1091,16 +1110,24 @@ function toKey(d){
 }
 const BETRIEBSRUHE_TAGE = ["12-24", "12-31"];
 
-// Betriebsurlaub (jedes Jahr wiederkehrend) - Format MM-DD
+// Betriebsurlaub (jedes Jahr wiederkehrend) - Format MM-DD (Fallback, wird durch Firebase überschrieben)
 const BETRIEBSURLAUB_RANGES = [
   {startMD: '07-27', endeMD: '08-07'}
 ];
-function istBetriebsurlaub(d){
+function istBetriebsurlaubStatic(d){
   const md = String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   return BETRIEBSURLAUB_RANGES.some(r => {
     if(r.startMD <= r.endeMD) return md >= r.startMD && md <= r.endeMD;
     return md >= r.startMD || md <= r.endeMD;
   });
+}
+function istBetriebsurlaub(d){
+  const ds = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const jahr = d.getFullYear();
+  if(window._betriebsurlaubCache && window._betriebsurlaubCache[jahr]){
+    return window._betriebsurlaubCache[jahr].some(r => ds >= r.von && ds <= r.bis);
+  }
+  return istBetriebsurlaubStatic(d);
 }
 
 function feiertageFuerJahr(jahr){
@@ -1454,7 +1481,7 @@ function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===name));
   document.querySelectorAll('.tab-content').forEach(c=>c.classList.add('hidden'));
   document.getElementById('tab-'+name).classList.remove('hidden');
-  if(name==='einstellungen'){ ladeFarben(); anwMailEinstellungenLaden(); backupEinstellungenLaden(); }
+  if(name==='einstellungen'){ ladeFarben(); anwMailEinstellungenLaden(); backupEinstellungenLaden(); betriebsurlaubJahrInitialisieren(); }
   if(name==='kalender') renderKalender();
   if(name==='meinkalender') renderMeinKalender();
   if(name==='anwesenheit'){ starteAnwAntraegeListener(); renderAnwesenheit(); renderAnwLegende(); anwEmpfaengerLaden(); }
@@ -3409,6 +3436,111 @@ function anwMailEinstellungenLaden(){
     if(textEl && d.mailText) textEl.value = d.mailText;
   });
 }
+
+// ===== BETRIEBSURLAUB EINSTELLUNGEN =====
+function betriebsurlaubJahrInitialisieren(){
+  const sel = document.getElementById('buJahr');
+  if(!sel) return;
+  const aktJahr = new Date().getFullYear();
+  if(sel.options.length === 0){
+    for(let y = aktJahr - 1; y <= aktJahr + 2; y++){
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y;
+      if(y === aktJahr) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  betriebsurlaubLaden();
+}
+
+function betriebsurlaubLaden(){
+  const jahr = document.getElementById('buJahr')?.value;
+  if(!jahr) return;
+  db.ref('settings/betriebsurlaub/' + jahr).once('value', snap=>{
+    const liste = snap.exists() ? snap.val() : [];
+    const arr = Array.isArray(liste) ? liste : Object.values(liste);
+    renderBetriebsurlaubTabelle(arr, jahr);
+  });
+}
+
+function renderBetriebsurlaubTabelle(arr, jahr){
+  const tbody = document.getElementById('betriebsurlaubBody');
+  if(!tbody) return;
+  if(!arr || arr.length === 0){
+    tbody.innerHTML = '<tr><td colspan="3" style="color:#999; text-align:center; padding:10px;">Kein Betriebsurlaub eingetragen</td></tr>';
+    return;
+  }
+  tbody.innerHTML = arr.map((r, i) => `
+    <tr>
+      <td>${formatDatum(r.von)}</td>
+      <td>${formatDatum(r.bis)}</td>
+      <td><button class="btn-danger btn-small" onclick="betriebsurlaubLoeschen(${i})">Löschen</button></td>
+    </tr>`).join('');
+}
+
+async function betriebsurlaubHinzufuegen(){
+  const von = document.getElementById('buVon')?.value;
+  const bis = document.getElementById('buBis')?.value;
+  const jahr = document.getElementById('buJahr')?.value;
+  const status = document.getElementById('betriebsurlaubStatus');
+  if(!von || !bis){ if(status) status.textContent = 'Bitte Von- und Bis-Datum eingeben.'; return; }
+  if(von > bis){ if(status) status.textContent = 'Das Von-Datum muss vor dem Bis-Datum liegen.'; return; }
+  if(von.slice(0,4) !== jahr || bis.slice(0,4) !== jahr){
+    if(status) status.textContent = 'Die Daten müssen im gewählten Jahr liegen.'; return;
+  }
+  const snap = await db.ref('settings/betriebsurlaub/' + jahr).once('value');
+  const bestehend = snap.exists() ? snap.val() : [];
+  const arr = Array.isArray(bestehend) ? [...bestehend] : [...Object.values(bestehend)];
+  arr.push({von, bis});
+  arr.sort((a,b) => a.von.localeCompare(b.von));
+  await db.ref('settings/betriebsurlaub/' + jahr).set(arr);
+  if(status) status.textContent = '✅ Betriebsurlaub gespeichert.';
+  document.getElementById('buVon').value = '';
+  document.getElementById('buBis').value = '';
+  betriebsurlaubLaden();
+  // Lokale Funktion aktualisieren
+  await betriebsurlaubGlobal_aktualisieren();
+}
+
+async function betriebsurlaubLoeschen(index){
+  const jahr = document.getElementById('buJahr')?.value;
+  const snap = await db.ref('settings/betriebsurlaub/' + jahr).once('value');
+  const bestehend = snap.exists() ? snap.val() : [];
+  const arr = Array.isArray(bestehend) ? [...bestehend] : [...Object.values(bestehend)];
+  arr.splice(index, 1);
+  await db.ref('settings/betriebsurlaub/' + jahr).set(arr.length > 0 ? arr : null);
+  const status = document.getElementById('betriebsurlaubStatus');
+  if(status) status.textContent = '✅ Eintrag gelöscht.';
+  betriebsurlaubLaden();
+  await betriebsurlaubGlobal_aktualisieren();
+}
+
+async function betriebsurlaubGlobal_aktualisieren(){
+  // Lädt alle Jahre und aktualisiert BETRIEBSURLAUB_RANGES für die Anzeige
+  const aktJahr = new Date().getFullYear();
+  const snap = await db.ref('settings/betriebsurlaub/' + aktJahr).once('value');
+  if(!snap.exists()){ return; }
+  const arr = snap.val();
+  const liste = Array.isArray(arr) ? arr : Object.values(arr);
+  // BETRIEBSURLAUB_RANGES auf vollständige Datumsbereiche umstellen
+  window._betriebsurlaubDynamisch = liste;
+}
+
+// Beim Start Betriebsurlaub aus Firebase laden
+(function ladeBetriebsurlaubCache(){
+  const aktJahr = new Date().getFullYear();
+  db.ref('settings/betriebsurlaub').once('value', snap=>{
+    if(!snap.exists()) return;
+    window._betriebsurlaubCache = {};
+    snap.forEach(child=>{
+      const jahr = parseInt(child.key);
+      const val = child.val();
+      window._betriebsurlaubCache[jahr] = Array.isArray(val) ? val : Object.values(val);
+    });
+  });
+})();
+// ===== ENDE BETRIEBSURLAUB =====
 
 function anwEmpfaengerLaden(){
   db.ref('settings/anwMail').once('value', snap=>{
