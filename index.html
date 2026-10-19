@@ -958,6 +958,23 @@
         </div>
 
         <div class="settings-section">
+          <h3>🔐 Login-Zuordnungen (Diagnose)</h3>
+          <div class="note" style="margin-bottom:10px;">Zeigt, welcher Login-Account mit welchem Mitarbeiter verknüpft ist. Konflikte werden rot markiert. Mit „Zurücksetzen“ wird die Verknüpfung gelöscht – beim nächsten Login greift wieder die in der Mitarbeiterverwaltung hinterlegte E-Mail.</div>
+          <div id="zuordnungWarnungen"></div>
+          <div class="table-scroll">
+          <table>
+            <thead><tr><th>Login-E-Mail</th><th>Zugeordneter Mitarbeiter</th><th>Laut Mitarbeiterliste</th><th>Status</th><th></th></tr></thead>
+            <tbody id="zuordnungBody"></tbody>
+          </table>
+          </div>
+          <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <button class="btn-primary" onclick="zuordnungenLaden()">🔄 Neu prüfen</button>
+            <button class="btn-primary" style="background:#1a7a3c;" onclick="zuordnungenAlleKorrigieren()">✅ Alle Konflikte korrigieren</button>
+            <span id="zuordnungStatus" class="note"></span>
+          </div>
+        </div>
+
+        <div class="settings-section">
           <h3>🏖️ Betriebsurlaub</h3>
           <div class="note" style="margin-bottom:10px;">Hier kannst du Betriebsurlaub-Zeiträume für das jeweilige Jahr eintragen. Diese werden im Kalender blau markiert und bei der Urlaubsberechnung berücksichtigt.</div>
           <div class="filter-row" style="margin-bottom:12px;">
@@ -1273,9 +1290,12 @@ function zeigeOnboarding(){
   hide('loadingScreen'); hide('loginScreen'); hide('app'); hide('pwChangeOverlay');
   const sel = document.getElementById('onboardingSelect');
   sel.innerHTML = '<option value="">– bitte wählen –</option>';
-  MITARBEITER.forEach((m,idx)=>{
+  // WICHTIG: Name statt Index als value. Indizes verschieben sich, wenn die
+  // Mitarbeiterliste zwischen Anzeige und Speichern neu geladen wird
+  // (live-Listener in ladeMitarbeiterListe) -> falsches Profil.
+  MITARBEITER.slice().sort((a,b)=> a.name.localeCompare(b.name,'de')).forEach(m=>{
     const opt = document.createElement('option');
-    opt.value = idx;
+    opt.value = m.name;
     opt.textContent = m.name + " (" + m.standort + ")";
     sel.appendChild(opt);
   });
@@ -1402,21 +1422,30 @@ async function ladeProfil(uid){
       MITARBEITER = MITARBEITER_FALLBACK.slice();
     }
 
-    if(profilSnap.exists()){
+    // Die in der Mitarbeiterliste hinterlegte E-Mail ist die verbindliche Quelle.
+    // Sie hat Vorrang vor einer evtl. falsch gespeicherten mitarbeiterZuordnung,
+    // damit sich Fehlzuordnungen automatisch korrigieren.
+    const zugewiesen = emailLower
+      ? MITARBEITER.find(m => (m.email||'').trim().toLowerCase() === emailLower)
+      : null;
+
+    if(zugewiesen){
+      const gespeicherterName = profilSnap.exists() ? (profilSnap.val().name||'') : '';
+      currentProfile = {name: zugewiesen.name, standort: zugewiesen.standort, email: currentUser.email};
+      // Nur schreiben, wenn sich etwas geaendert hat (spart Writes)
+      if(gespeicherterName !== zugewiesen.name){
+        if(gespeicherterName){
+          console.warn('Fehlzuordnung korrigiert: "'+gespeicherterName+'" -> "'+zugewiesen.name+'" (uid '+uid+', '+emailLower+')');
+        }
+        try{ await db.ref('mitarbeiterZuordnung/'+uid).set(currentProfile); }catch(e){}
+      }
+      zeigeApp();
+    } else if(profilSnap.exists()){
+      // Keine E-Mail hinterlegt -> gespeicherte Zuordnung verwenden (z.B. per Onboarding gewaehlt)
       currentProfile = profilSnap.val();
       zeigeApp();
     } else {
-      // Auto-Zuweisung: Wenn die Login-E-Mail in mitarbeiterListe hinterlegt ist,
-      // Namen direkt uebernehmen und Onboarding ueberspringen.
-      const emailLower = (currentUser.email||'').trim().toLowerCase();
-      const zugewiesen = MITARBEITER.find(m => (m.email||'').toLowerCase() === emailLower);
-      if(zugewiesen){
-        currentProfile = {name: zugewiesen.name, standort: zugewiesen.standort, email: currentUser.email};
-        try{ await db.ref('mitarbeiterZuordnung/'+uid).set(currentProfile); }catch(e){}
-        zeigeApp();
-      } else {
-        zeigeOnboarding();
-      }
+      zeigeOnboarding();
     }
   }catch(err){
     console.error(err);
@@ -1463,7 +1492,12 @@ async function handleOnboardingSave(){
     zeigeFehler('onboardingError','Bitte wähle deinen Namen aus.');
     return;
   }
-  const m = MITARBEITER[sel.value];
+  // Lookup per Name (nicht per Index) - robust gegen Listenaenderungen
+  const m = MITARBEITER.find(x => x.name === sel.value);
+  if(!m){
+    zeigeFehler('onboardingError','Mitarbeiter nicht gefunden. Bitte Seite neu laden.');
+    return;
+  }
   const profil = {name:m.name, standort:m.standort, email:currentUser.email};
   try{
     await db.ref('mitarbeiterZuordnung/'+currentUser.uid).set(profil);
@@ -1481,7 +1515,7 @@ function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===name));
   document.querySelectorAll('.tab-content').forEach(c=>c.classList.add('hidden'));
   document.getElementById('tab-'+name).classList.remove('hidden');
-  if(name==='einstellungen'){ ladeFarben(); anwMailEinstellungenLaden(); backupEinstellungenLaden(); betriebsurlaubJahrInitialisieren(); }
+  if(name==='einstellungen'){ ladeFarben(); anwMailEinstellungenLaden(); backupEinstellungenLaden(); betriebsurlaubJahrInitialisieren(); zuordnungenLaden(); }
   if(name==='kalender') renderKalender();
   if(name==='meinkalender') renderMeinKalender();
   if(name==='anwesenheit'){ starteAnwAntraegeListener(); renderAnwesenheit(); renderAnwLegende(); anwEmpfaengerLaden(); }
@@ -2718,19 +2752,29 @@ async function backupErstellen(){
   const status = document.getElementById('backupStatus');
   status.textContent = 'Lade Daten…';
   try{
-    const [antraegeSnap, anwesenheitSnap, stammdatenSnap, einstellungenSnap] = await Promise.all([
+    const [antraegeSnap, anwesenheitSnap, stammdatenSnap, einstellungenSnap,
+           listeSnap, zuordnungSnap, berechtigungenSnap, korrekturenSnap] = await Promise.all([
       db.ref('antraege').once('value'),
       db.ref('anwesenheit').once('value'),
       db.ref('stammdaten').once('value'),
       db.ref('settings').once('value'),
+      db.ref('mitarbeiterListe').once('value'),
+      db.ref('mitarbeiterZuordnung').once('value'),
+      db.ref('berechtigungen').once('value'),
+      db.ref('korrekturen').once('value'),
     ]);
     const backup = {
       erstellt: new Date().toISOString(),
-      version: '1.0',
+      version: '1.1',
       antraege:    antraegeSnap.exists()     ? antraegeSnap.val()     : {},
       anwesenheit: anwesenheitSnap.exists()  ? anwesenheitSnap.val()  : {},
       stammdaten:  stammdatenSnap.exists()   ? stammdatenSnap.val()   : {},
       settings:    einstellungenSnap.exists()? einstellungenSnap.val(): {},
+      // ab v1.1 zusaetzlich gesichert (waren vorher NICHT im Backup):
+      mitarbeiterListe:     listeSnap.exists()         ? listeSnap.val()         : {},
+      mitarbeiterZuordnung: zuordnungSnap.exists()     ? zuordnungSnap.val()     : {},
+      berechtigungen:       berechtigungenSnap.exists()? berechtigungenSnap.val(): {},
+      korrekturen:          korrekturenSnap.exists()   ? korrekturenSnap.val()   : {},
     };
     const json = JSON.stringify(backup, null, 2);
     const blob = new Blob([json], {type:'application/json'});
@@ -2941,6 +2985,8 @@ async function backupWiederherstellen(input){
       `• ${anzahlAntraege} Urlaubsanträge\n` +
       `• Anwesenheitsdaten\n` +
       (backup.settings ? '• Einstellungen (Farben, ntfy etc.)\n' : '') +
+      (backup.mitarbeiterListe && Object.keys(backup.mitarbeiterListe).length ? `• Mitarbeiterliste (${Object.keys(backup.mitarbeiterListe).length})\n` : '') +
+      (backup.berechtigungen && Object.keys(backup.berechtigungen).length ? `• Rollen & Berechtigungen (${Object.keys(backup.berechtigungen).length})\n` : '') +
       `\n⚠️ ACHTUNG: Bestehende Daten werden ÜBERSCHRIEBEN.\n` +
       `Neuere Einträge die nach dem Backup-Datum gemacht wurden gehen verloren!\n\n` +
       `Fortfahren?`
@@ -2965,6 +3011,30 @@ async function backupWiederherstellen(input){
     if(backup.settings){
       const settingsOk = confirm('Sollen auch die Einstellungen (Farben, E-Mail, ntfy) wiederhergestellt werden?');
       if(settingsOk) await db.ref('settings').set(backup.settings);
+    }
+    // Mitarbeiterliste, Rollen und Login-Zuordnungen (ab Backup v1.1) - getrennt bestaetigen,
+    // da hiervon die Login-Zuordnung aller Nutzer abhaengt.
+    const hatStamm = (backup.mitarbeiterListe && Object.keys(backup.mitarbeiterListe).length)
+                  || (backup.berechtigungen && Object.keys(backup.berechtigungen).length);
+    if(hatStamm){
+      const stammOk = confirm(
+        'Sollen auch Mitarbeiterliste, Rollen/Berechtigungen und Login-Zuordnungen wiederhergestellt werden?\n\n' +
+        'Hinweis: Dies überschreibt, welcher Login zu welchem Mitarbeiter gehört.'
+      );
+      if(stammOk){
+        if(backup.mitarbeiterListe && Object.keys(backup.mitarbeiterListe).length){
+          await db.ref('mitarbeiterListe').set(backup.mitarbeiterListe);
+        }
+        if(backup.berechtigungen && Object.keys(backup.berechtigungen).length){
+          await db.ref('berechtigungen').set(backup.berechtigungen);
+        }
+        if(backup.mitarbeiterZuordnung && Object.keys(backup.mitarbeiterZuordnung).length){
+          await db.ref('mitarbeiterZuordnung').set(backup.mitarbeiterZuordnung);
+        }
+      }
+    }
+    if(backup.korrekturen && Object.keys(backup.korrekturen).length){
+      await db.ref('korrekturen').set(backup.korrekturen);
     }
 
     status.textContent = `✓ Wiederherstellung abgeschlossen (${anzahlAntraege} Anträge). Seite wird neu geladen…`;
@@ -3436,6 +3506,103 @@ function anwMailEinstellungenLaden(){
     if(textEl && d.mailText) textEl.value = d.mailText;
   });
 }
+
+// ===== LOGIN-ZUORDNUNGEN (DIAGNOSE) =====
+let _zuordnungCache = [];
+
+async function zuordnungenLaden(){
+  const tbody = document.getElementById('zuordnungBody');
+  const warn  = document.getElementById('zuordnungWarnungen');
+  const status= document.getElementById('zuordnungStatus');
+  if(!tbody) return;
+  if(status) status.textContent = 'Lade …';
+
+  const snap = await db.ref('mitarbeiterZuordnung').get();
+  const zuordnungen = snap.exists() ? snap.val() : {};
+
+  // Doppelte E-Mails in der Mitarbeiterliste aufspueren (haeufige Fehlerquelle)
+  const mailZaehler = {};
+  MITARBEITER.forEach(m=>{
+    const e = (m.email||'').trim().toLowerCase();
+    if(!e) return;
+    (mailZaehler[e] = mailZaehler[e] || []).push(m.name);
+  });
+  const doppelte = Object.entries(mailZaehler).filter(([,namen]) => namen.length > 1);
+
+  let warnHtml = '';
+  if(doppelte.length){
+    warnHtml += '<div style="padding:10px 14px; background:#ffe8e8; border:1px solid var(--bad); border-radius:8px; margin-bottom:10px; font-size:13px;">'
+      + '<b>⚠️ Doppelt vergebene E-Mail-Adressen:</b><br>'
+      + doppelte.map(([mail,namen]) => '<code>'+mail+'</code> → '+namen.join(', ')).join('<br>')
+      + '<br><span style="color:#7d0000;">Bitte in der Mitarbeiterverwaltung korrigieren – sonst landen diese Mitarbeiter im falschen Profil.</span></div>';
+  }
+  // Mitarbeiter ohne E-Mail (kein Auto-Login, muessen Namen waehlen)
+  const ohneMail = MITARBEITER.filter(m => !(m.email||'').trim()).map(m=>m.name);
+  if(ohneMail.length){
+    warnHtml += '<div style="padding:10px 14px; background:#fff8e1; border:1px solid #f0c040; border-radius:8px; margin-bottom:10px; font-size:13px;">'
+      + '<b>ℹ️ Ohne hinterlegte E-Mail ('+ohneMail.length+'):</b> '+ohneMail.join(', ')
+      + '<br><span style="color:#7d5a00;">Diese müssen ihren Namen beim ersten Login selbst wählen – dort können Fehlzuordnungen entstehen.</span></div>';
+  }
+  if(warn) warn.innerHTML = warnHtml;
+
+  _zuordnungCache = Object.keys(zuordnungen).map(uid=>{
+    const z = zuordnungen[uid] || {};
+    const mail = (z.email||'').trim().toLowerCase();
+    const sollte = mail ? MITARBEITER.find(m => (m.email||'').trim().toLowerCase() === mail) : null;
+    const konflikt = !!(sollte && sollte.name !== z.name);
+    return {uid, gespeichert: z.name||'–', mail: z.email||'–', sollName: sollte ? sollte.name : null, sollStandort: sollte ? sollte.standort : null, konflikt};
+  }).sort((a,b)=> (b.konflikt - a.konflikt) || String(a.gespeichert).localeCompare(String(b.gespeichert),'de'));
+
+  if(_zuordnungCache.length === 0){
+    tbody.innerHTML = '<tr><td colspan="5" style="color:#999; text-align:center; padding:10px;">Keine Zuordnungen vorhanden</td></tr>';
+  } else {
+    tbody.innerHTML = _zuordnungCache.map(r=>{
+      const statusTxt = r.konflikt
+        ? '<span style="color:var(--bad); font-weight:700;">⚠️ Konflikt</span>'
+        : (r.sollName ? '<span style="color:#1a7a3c; font-weight:700;">✓ OK</span>'
+                      : '<span style="color:#7d5a00;">manuell gewählt</span>');
+      return '<tr'+(r.konflikt?' style="background:#ffe8e8;"':'')+'>'
+        + '<td style="font-size:12px;">'+r.mail+'</td>'
+        + '<td><b>'+r.gespeichert+'</b></td>'
+        + '<td>'+(r.sollName || '–')+'</td>'
+        + '<td>'+statusTxt+'</td>'
+        + '<td><button class="btn-danger btn-small" onclick="zuordnungZuruecksetzen(\''+r.uid+'\')">Zurücksetzen</button></td>'
+        + '</tr>';
+    }).join('');
+  }
+  const anzKonflikt = _zuordnungCache.filter(r=>r.konflikt).length;
+  if(status) status.textContent = _zuordnungCache.length+' Zuordnung(en), '+anzKonflikt+' Konflikt(e).';
+}
+
+async function zuordnungZuruecksetzen(uid){
+  const status = document.getElementById('zuordnungStatus');
+  try{
+    await db.ref('mitarbeiterZuordnung/'+uid).remove();
+    if(status) status.textContent = '✅ Zuordnung zurückgesetzt. Beim nächsten Login wird sie neu bestimmt.';
+    zuordnungenLaden();
+  }catch(e){
+    if(status) status.textContent = 'Fehler: '+e.message;
+  }
+}
+
+async function zuordnungenAlleKorrigieren(){
+  const status = document.getElementById('zuordnungStatus');
+  const konflikte = _zuordnungCache.filter(r=>r.konflikt);
+  if(konflikte.length === 0){
+    if(status) status.textContent = 'Keine Konflikte vorhanden.';
+    return;
+  }
+  try{
+    for(const r of konflikte){
+      await db.ref('mitarbeiterZuordnung/'+r.uid).set({name: r.sollName, standort: r.sollStandort, email: r.mail});
+    }
+    if(status) status.textContent = '✅ '+konflikte.length+' Zuordnung(en) korrigiert.';
+    zuordnungenLaden();
+  }catch(e){
+    if(status) status.textContent = 'Fehler: '+e.message;
+  }
+}
+// ===== ENDE LOGIN-ZUORDNUNGEN =====
 
 // ===== BETRIEBSURLAUB EINSTELLUNGEN =====
 function betriebsurlaubJahrInitialisieren(){
