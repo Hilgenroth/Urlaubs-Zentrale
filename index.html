@@ -2767,7 +2767,8 @@ async function backupErstellen(){
   status.textContent = 'Lade Daten…';
   try{
     const pfade = ['antraege','anwesenheit','stammdaten','settings',
-                   'mitarbeiterListe','mitarbeiterZuordnung','berechtigungen','korrekturen'];
+                   'mitarbeiterListe','mitarbeiterZuordnung','berechtigungen',
+                   'korrekturanfragen','passwortAendernErforderlich'];
     const res = {};
     const nichtLesbar = [];
     await Promise.all(pfade.map(async p=>{
@@ -2793,7 +2794,8 @@ async function backupErstellen(){
       mitarbeiterListe:     res.mitarbeiterListe,
       mitarbeiterZuordnung: res.mitarbeiterZuordnung,
       berechtigungen:       res.berechtigungen,
-      korrekturen:          res.korrekturen,
+      korrekturanfragen:    res.korrekturanfragen,
+      passwortAendernErforderlich: res.passwortAendernErforderlich,
       _nichtGesichert:      nichtLesbar,
     };
     const json = JSON.stringify(backup, null, 2);
@@ -3064,9 +3066,11 @@ async function backupWiederherstellen(input){
         }
       }
     }
-    if(backup.korrekturen && Object.keys(backup.korrekturen).length){
-      try{ await db.ref('korrekturen').set(backup.korrekturen); }
-      catch(e){ console.warn('Korrekturen nicht wiederherstellbar: '+(e.message||e)); }
+    // Korrekturanfragen (ab v1.1; aeltere Backups nutzten faelschlich "korrekturen")
+    const korrAnfr = backup.korrekturanfragen || backup.korrekturen;
+    if(korrAnfr && Object.keys(korrAnfr).length){
+      try{ await db.ref('korrekturanfragen').set(korrAnfr); }
+      catch(e){ console.warn('Korrekturanfragen nicht wiederherstellbar: '+(e.message||e)); }
     }
 
     status.textContent = `✓ Wiederherstellung abgeschlossen (${anzahlAntraege} Anträge). Seite wird neu geladen…`;
